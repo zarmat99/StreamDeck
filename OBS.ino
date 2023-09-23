@@ -3,7 +3,6 @@
 #define SCENEBUTTON1 1
 #define SCENEBUTTON2 2
 #define SCENEBUTTON3 3
-#define TEST 0
 
 const int recordPin = 4;     
 const int setmodePin = 7;
