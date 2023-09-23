@@ -6,13 +6,13 @@ import serial
 from obswebsocket import obsws, requests
 
 ser_data = ""
-#logging.basicConfig(level=logging.DEBUG)
-#sys.path.append('../')
+logging.basicConfig(level=logging.DEBUG)
+sys.path.append('../')
 
 
 # function that open the connection with obs web socket in order to send
 # requests and receive response
-def ConnectObsWebSocket(host="192.168.56.1", port=4455, password="ciaociao"):
+def ConnectObsWebSocket(host="192.168.0.57", port=4455, password="ciaociao"):
     ws = obsws(host=host, port=port, password=password, legacy=0)
     try:
         ws.connect()
@@ -58,9 +58,10 @@ def event_handler():
     global ser_data
     res = ""
     if ser_data == "SetMode":
-        while "selected" not in ser_data:
-            pass
-        ser.write(input().encode())
+        while "Normal Operation" not in ser_data:
+            if "selected" in ser_data:
+                ser.write(input().encode())
+                time.sleep(3)
     elif ser_data == "StartRecord":
         req = requests.StartRecord()
         res = ws.call(req)

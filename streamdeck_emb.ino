@@ -7,6 +7,7 @@
 const int recordPin = 4;     
 const int setmodePin = 7;
 const int scene1Pin = 2;  //SCENEBUTTON0
+const int scene2Pin = 3;  //SCENEBUTTON1
 
 int t = 0;
 int t_flut = 0;
@@ -19,7 +20,9 @@ void setup()
   pinMode(recordPin, INPUT);
   pinMode(setmodePin, INPUT);  
   pinMode(scene1Pin, INPUT);
-  digitalWrite(scene1Pin, LOW);  
+  pinMode(scene2Pin, INPUT);
+  digitalWrite(scene1Pin, LOW);
+  digitalWrite(scene2Pin, LOW);  
   digitalWrite(recordPin, LOW); 
   digitalWrite(setmodePin, LOW);  
   Serial.begin(9600);          
@@ -47,7 +50,7 @@ void SetMode()
   {
     data = "";
     // until a button to be set is pressed, do nothing except manage the exit event
-    while (digitalRead(scene1Pin) == LOW)   //or scene2 or scene3 ecc..
+    while (digitalRead(scene1Pin) == LOW && digitalRead(scene2Pin) == LOW)   //and scene3 or scene4 ecc..
     {
       t = TimeTriggerEventHandler(setmodePin, t, DELAY);
       if (t >= 2000)
@@ -66,7 +69,12 @@ void SetMode()
       Serial.println("selected button 0");
       i = 0;
     }
-   // elif scene2Pin == HIGH ...
+     else if (digitalRead(scene2Pin) == HIGH)
+    {
+      Serial.println("selected button 1");
+      i = 1;
+    }
+   // elif scene3Pin == HIGH ...
 
     // wait until I receive consistent data from the user
     while (data == "")
@@ -84,7 +92,8 @@ void SetMode()
     
     scenes[i] = data;
     Serial.print(scenes[i]);
-    Serial.println(" setted in button 0");
+    Serial.print(" setted in button ");
+    Serial.println(i);
   }
   
 }
@@ -123,7 +132,12 @@ void loop()
     Serial.println(scenes[SCENEBUTTON0]);
     while(digitalRead(scene1Pin) == HIGH);
   }
-  
+  else if(digitalRead(scene2Pin) == HIGH)
+  {
+    Serial.println("ChangeScene");
+    Serial.println(scenes[SCENEBUTTON1]);
+    while(digitalRead(scene2Pin) == HIGH);
+  }
   
   delay(DELAY);
 }
