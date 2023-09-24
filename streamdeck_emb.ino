@@ -1,9 +1,13 @@
+#include <EEPROM.h>
+
 #define DELAY 10 //milliseconds
 #define SCENEBUTTON0 0
 #define SCENEBUTTON1 1
 #define SCENEBUTTON2 2
 #define SCENEBUTTON3 3
 
+const int EEPROM_SIZE = 512;
+const int STRING_LENGTH = 20;
 const int recordPin = 4;     
 const int setmodePin = 7;
 const int scene1Pin = 2;  //SCENEBUTTON0
@@ -15,6 +19,27 @@ int recording = 0;
 
 String scenes[] = {"no scene", "no scene", "no scene", "no scene"};
 
+
+void ReadSettings()
+{
+  for (int i = 0; i < 4; i++)
+  {
+    char buffer[STRING_LENGTH]; 
+    EEPROM.get(i * 20, buffer);
+    scenes[i] = String(buffer);
+  }
+}
+
+void SaveSettings()
+{
+  for (int i = 0; i < 4; i++)
+  {
+    char buffer[STRING_LENGTH]; 
+    scenes[i].toCharArray(buffer, 20);
+    EEPROM.put(i * 20, buffer);
+  }
+}
+
 void setup() 
 {
   pinMode(recordPin, INPUT);
@@ -25,6 +50,7 @@ void setup()
   digitalWrite(scene2Pin, LOW);  
   digitalWrite(recordPin, LOW); 
   digitalWrite(setmodePin, LOW);  
+  ReadSettings();
   Serial.begin(9600);          
 }
 
@@ -62,7 +88,6 @@ void SetMode()
     if (exit_flag)
       break;
    
-
     // understands which button was pressed
     if (digitalRead(scene1Pin) == HIGH)
     {
@@ -89,8 +114,9 @@ void SetMode()
     }
     if (exit_flag)
       break;
-    
+  
     scenes[i] = data;
+    SaveSettings();
     Serial.print(scenes[i]);
     Serial.print(" setted in button ");
     Serial.println(i);
