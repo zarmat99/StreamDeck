@@ -8,14 +8,16 @@
 
 const int EEPROM_SIZE = 512;
 const int STRING_LENGTH = 20;
-const int recordPin = 4;     
-const int setmodePin = 7;
-const int scene1Pin = 2;  //SCENEBUTTON0
-const int scene2Pin = 3;  //SCENEBUTTON1
+const int recordPin = 12;  
+const int streamPin = 11;   
+const int setmodePin = 2;
+const int scene1Pin = 8;  //SCENEBUTTON0
+const int scene2Pin = 9;  //SCENEBUTTON1
 
 int t = 0;
 int t_flut = 0;
 int recording = 0;
+int streaming = 0;
 
 String scenes[] = {"no scene", "no scene", "no scene", "no scene"};
 
@@ -43,12 +45,14 @@ void SaveSettings()
 void setup() 
 {
   pinMode(recordPin, INPUT);
+  pinMode(streamPin, INPUT);
   pinMode(setmodePin, INPUT);  
   pinMode(scene1Pin, INPUT);
   pinMode(scene2Pin, INPUT);
   digitalWrite(scene1Pin, LOW);
   digitalWrite(scene2Pin, LOW);  
   digitalWrite(recordPin, LOW); 
+  digitalWrite(streamPin, LOW); 
   digitalWrite(setmodePin, LOW);  
   ReadSettings();
   Serial.begin(9600);          
@@ -151,6 +155,16 @@ void loop()
   {
     Serial.println("StopRecord");
     recording = 0;
+  }
+  else if(digitalRead(streamPin) == HIGH && !streaming)    
+  {
+    Serial.println("StartStream");    // start recording
+    streaming = 1;
+  } 
+  else if(digitalRead(streamPin) == LOW && streaming)
+  {
+    Serial.println("StopStream");
+    streaming = 0;
   }
   else if(digitalRead(scene1Pin) == HIGH)
   {

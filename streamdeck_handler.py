@@ -10,9 +10,9 @@ logging.basicConfig(level=logging.DEBUG)
 sys.path.append('../')
 
 
-# function that open the connection with obs web socket in order to send
+# function that open the connection with obste web socket in order to send
 # requests and receive response
-def ConnectObsWebSocket(host="192.168.0.57", port=4455, password="ciaociao"):
+def ConnectObsWebSocket(host="10.239.51.83", port=4455, password="ciaociao"):
     ws = obsws(host=host, port=port, password=password, legacy=0)
     try:
         ws.connect()
@@ -26,7 +26,7 @@ def ConnectObsWebSocket(host="192.168.0.57", port=4455, password="ciaociao"):
 
 # function that open serial communication with the micro in order
 # to receive signals from the device
-def OpenSerialCommunication(com_port="COM5", baud_rate=9600):
+def OpenSerialCommunication(com_port="COM7", baud_rate=9600):
     try:
         ser = serial.Serial(com_port, baud_rate)
         print("serial connection success!")
