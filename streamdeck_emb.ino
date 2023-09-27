@@ -95,12 +95,12 @@ void SetMode()
     // understands which button was pressed
     if (digitalRead(scene1Pin) == HIGH)
     {
-      Serial.println("selected button 0");
+      Serial.println("0");
       i = 0;
     }
      else if (digitalRead(scene2Pin) == HIGH)
     {
-      Serial.println("selected button 1");
+      Serial.println("1");
       i = 1;
     }
    // elif scene3Pin == HIGH ...
@@ -121,9 +121,6 @@ void SetMode()
   
     scenes[i] = data;
     SaveSettings();
-    Serial.print(scenes[i]);
-    Serial.print(" setted in button ");
-    Serial.println(i);
   }
   
 }

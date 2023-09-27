@@ -12,7 +12,7 @@ sys.path.append('../')
 
 # function that open the connection with obste web socket in order to send
 # requests and receive response
-def ConnectObsWebSocket(host="10.239.51.83", port=4455, password="ciaociao"):
+def ConnectObsWebSocket(host="10.239.51.22", port=4455, password="ciaociao"):
     ws = obsws(host=host, port=port, password=password, legacy=0)
     try:
         ws.connect()
@@ -36,7 +36,7 @@ def OpenSerialCommunication(com_port="COM7", baud_rate=9600):
     return ser
 
 
-def acquire_scenes(ws):
+def acquire_scenes():
     # list of scenes
     scenes = []
     req = requests.GetSceneList()
@@ -46,10 +46,24 @@ def acquire_scenes(ws):
     return scenes
 
 
-def change_scene(scenes, scene_name):
+def change_scene(scene_name):
     req = requests.SetCurrentProgramScene(sceneName=scene_name)
     res = ws.call(req)
     print(res)
+
+
+def set_mode():
+    global ser_data
+    while "Normal Operation" not in ser_data:
+        if ser_data in ["0", "1"]:
+            i = 0
+            for scene in scenes:
+                print(f"scene {i}: {scene}")
+                i += 1
+            scene = input()
+            ser.write(scene.encode())
+            print(f"{scene} set in button {ser_data}")
+            ser_data = ""
 
 
 # function that checks the signal arriving from the device and performs
@@ -58,10 +72,7 @@ def event_handler():
     global ser_data
     res = ""
     if ser_data == "SetMode":
-        while "Normal Operation" not in ser_data:
-            if "selected" in ser_data:
-                ser.write(input().encode())
-                time.sleep(3)
+        set_mode()
     elif ser_data == "StartRecord":
         req = requests.StartRecord()
         res = ws.call(req)
@@ -81,7 +92,7 @@ def event_handler():
         while ser_data == "ChangeScene":
             pass
         print(f"scene name: {ser_data}")
-        change_scene(scenes, ser_data)
+        change_scene(ser_data)
     ser_data = ""
     return res
 
@@ -91,21 +102,22 @@ def read_ser_task():
     while True:
         ser_data = ser.readline().decode().strip()
         print(f"> {ser_data}")
-        time.sleep(0.1)
+        time.sleep(0.01)
 
 
 def main_task():
     while True:
         event_handler()
-        time.sleep(0.1)
+        time.sleep(0.01)
 
 
 if __name__ == '__main__':
-    print("stream-deck 1.0 ALPHA2")
+    print("stream-deck 1.0 ALPHA5")
     ws = ConnectObsWebSocket()
     ser = OpenSerialCommunication()
 
-    scenes = acquire_scenes(ws)
+    scenes = acquire_scenes()
+    scenes.reverse()
 
     threading.Thread(target=read_ser_task).start()
     threading.Thread(target=main_task).start()

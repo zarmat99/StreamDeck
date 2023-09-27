@@ -15,12 +15,19 @@ the mode is triggered by pressing the corresponding button for two seconds
 - ChangeScene -
 ChangeScene allows you to change the current scene to the one assigned to the pressed button
 
+- StartStreaming -
+StartStreaming starts streaming on OBS Studio
+
+- StopStreaming - 
+StopStreaming stops streaming on OBS Studio
+
 
 
 ############################
 Hardware currently supported
 ############################
 
+- 1 switch -> StartStreaming/StopStreaming
 - 1 switch -> StartRecord/StopRecord
 - 1 button -> SetMode
 - 2 button -> ChangeScene
