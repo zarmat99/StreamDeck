@@ -34,14 +34,14 @@ def free_send():
     while True:
         print("COMMAND LIST\n"
               "- SetMode\n"
-              " * 0 *\n"
-              " * 1 *\n"
+              " * key *\n"
               "- StartRecord\n"
               "- StopRecord\n"
               "- StartStreaming\n"
               "- StopStreaming\n"
               "- ChangeScene\n"
-              " * scene name *\n")
+              " * scene name *\n"
+              "- SetInputVolume\n")
         ser.write(input().encode() + "\n".encode())
 
 

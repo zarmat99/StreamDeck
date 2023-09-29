@@ -1,18 +1,16 @@
 #include <EEPROM.h>
 
-#define DELAY 10 //milliseconds
-#define SCENEBUTTON0 0
-#define SCENEBUTTON1 1
-#define SCENEBUTTON2 2
-#define SCENEBUTTON3 3
-
+const int DELAY 10 //milliseconds
 const int EEPROM_SIZE = 512;
 const int STRING_LENGTH = 20;
 const int recordPin = 12;  
 const int streamPin = 11;   
 const int setmodePin = 2;
-const int scene1Pin = 8;  //SCENEBUTTON0
-const int scene2Pin = 9;  //SCENEBUTTON1
+const int scene0Pin = 8; 
+const int scene1Pin = 9;  
+const int pot0Pin = A0;
+const int pot1Pin = A1;
+const int pot2Pin = A2;
 
 int t = 0;
 int t_flut = 0;
@@ -20,6 +18,7 @@ int recording = 0;
 int streaming = 0;
 
 String scenes[] = {"no scene", "no scene", "no scene", "no scene"};
+int volumes[] = {0, 0, 0};
 
 
 void ReadSettings()
@@ -47,10 +46,10 @@ void setup()
   pinMode(recordPin, INPUT);
   pinMode(streamPin, INPUT);
   pinMode(setmodePin, INPUT);  
+  pinMode(scene0Pin, INPUT);
   pinMode(scene1Pin, INPUT);
-  pinMode(scene2Pin, INPUT);
-  digitalWrite(scene1Pin, LOW);
-  digitalWrite(scene2Pin, LOW);  
+  digitalWrite(scene0Pin, LOW);
+  digitalWrite(scene1Pin, LOW);  
   digitalWrite(recordPin, LOW); 
   digitalWrite(streamPin, LOW); 
   digitalWrite(setmodePin, LOW);  
@@ -80,7 +79,7 @@ void SetMode()
   {
     data = "";
     // until a button to be set is pressed, do nothing except manage the exit event
-    while (digitalRead(scene1Pin) == LOW && digitalRead(scene2Pin) == LOW)   //and scene3 or scene4 ecc..
+    while (digitalRead(scene0Pin) == LOW && digitalRead(scene1Pin) == LOW)   //and scene3 or scene4 ecc..
     {
       t = TimeTriggerEventHandler(setmodePin, t, DELAY);
       if (t >= 2000)
@@ -93,14 +92,14 @@ void SetMode()
       break;
    
     // understands which button was pressed
-    if (digitalRead(scene1Pin) == HIGH)
+    if (digitalRead(scene0Pin) == HIGH)
     {
-      Serial.println("0");
+      Serial.println("B0");
       i = 0;
     }
-     else if (digitalRead(scene2Pin) == HIGH)
+     else if (digitalRead(scene1Pin) == HIGH)
     {
-      Serial.println("1");
+      Serial.println("B1");
       i = 1;
     }
    // elif scene3Pin == HIGH ...
@@ -163,18 +162,28 @@ void loop()
     Serial.println("StopStream");
     streaming = 0;
   }
+  else if(digitalRead(scene0Pin) == HIGH)
+  {
+    Serial.println("ChangeScene");
+    Serial.println(scenes[0]);
+    while(digitalRead(scene0Pin) == HIGH);
+  }
   else if(digitalRead(scene1Pin) == HIGH)
   {
     Serial.println("ChangeScene");
-    Serial.println(scenes[SCENEBUTTON0]);
+    Serial.println(scenes[1]);
     while(digitalRead(scene1Pin) == HIGH);
   }
-  else if(digitalRead(scene2Pin) == HIGH)
-  {
-    Serial.println("ChangeScene");
-    Serial.println(scenes[SCENEBUTTON1]);
-    while(digitalRead(scene2Pin) == HIGH);
-  }
-  
+  /*
+  Serial.println("SetInputVolume");
+  Serial.println(volumes[0]);
+  Serial.println(analogRead(pot0Pin));
+  Serial.println("SetInputVolume");
+  Serial.println(volumes[1]);
+  Serial.println(analogRead(pot1Pin));
+  Serial.println("SetInputVolume");
+  Serial.println(volumes[2]);
+  Serial.println(analogRead(pot2Pin));
+  */
   delay(DELAY);
 }
