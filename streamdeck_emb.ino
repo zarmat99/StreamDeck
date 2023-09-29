@@ -1,8 +1,7 @@
-#include <EEPROM.h>
-
-const int DELAY 10 //milliseconds
-const int EEPROM_SIZE = 512;
-const int STRING_LENGTH = 20;
+const int DELAY = 10;       //milliseconds
+const int TOLLERANCE = 10;
+const int MIN_POT = 93;
+const int MAX_POT = 1022;
 const int recordPin = 12;  
 const int streamPin = 11;   
 const int setmodePin = 2;
@@ -12,34 +11,11 @@ const int pot0Pin = A0;
 const int pot1Pin = A1;
 const int pot2Pin = A2;
 
+int volume[] = {MAX_POT, MAX_POT, MAX_POT};
 int t = 0;
 int t_flut = 0;
 int recording = 0;
 int streaming = 0;
-
-String scenes[] = {"no scene", "no scene", "no scene", "no scene"};
-int volumes[] = {0, 0, 0};
-
-
-void ReadSettings()
-{
-  for (int i = 0; i < 4; i++)
-  {
-    char buffer[STRING_LENGTH]; 
-    EEPROM.get(i * 20, buffer);
-    scenes[i] = String(buffer);
-  }
-}
-
-void SaveSettings()
-{
-  for (int i = 0; i < 4; i++)
-  {
-    char buffer[STRING_LENGTH]; 
-    scenes[i].toCharArray(buffer, 20);
-    EEPROM.put(i * 20, buffer);
-  }
-}
 
 void setup() 
 {
@@ -53,7 +29,6 @@ void setup()
   digitalWrite(recordPin, LOW); 
   digitalWrite(streamPin, LOW); 
   digitalWrite(setmodePin, LOW);  
-  ReadSettings();
   Serial.begin(9600);          
 }
 
@@ -72,14 +47,15 @@ int TimeTriggerEventHandler(int pin, int milliseconds, int add_delay)
 void SetMode()
 {
   t = 0;
-  int i = -1;
-  String data;
   int exit_flag = 0;
+  String selection = "";
   while (1)
   {
-    data = "";
     // until a button to be set is pressed, do nothing except manage the exit event
-    while (digitalRead(scene0Pin) == LOW && digitalRead(scene1Pin) == LOW)   //and scene3 or scene4 ecc..
+    while (digitalRead(scene0Pin) == LOW && digitalRead(scene1Pin) == LOW && 
+           analogRead(pot0Pin) > (volume[0] - TOLLERANCE) && analogRead(pot0Pin) < (volume[0] + TOLLERANCE) &&
+           analogRead(pot1Pin) > (volume[1] - TOLLERANCE) && analogRead(pot1Pin) < (volume[1] + TOLLERANCE) &&
+           analogRead(pot2Pin) > (volume[2] - TOLLERANCE) && analogRead(pot2Pin) < (volume[2] + TOLLERANCE))   //and scene3 or scene4 ecc..
     {
       t = TimeTriggerEventHandler(setmodePin, t, DELAY);
       if (t >= 2000)
@@ -94,34 +70,54 @@ void SetMode()
     // understands which button was pressed
     if (digitalRead(scene0Pin) == HIGH)
     {
-      Serial.println("B0");
-      i = 0;
+      if(selection != "B0")
+        Serial.println("B0");
+      selection = "B0";
     }
-     else if (digitalRead(scene1Pin) == HIGH)
+    else if (digitalRead(scene1Pin) == HIGH)
     {
-      Serial.println("B1");
-      i = 1;
+      if(selection != "B1")
+        Serial.println("B1");
+      selection = "B1";
     }
-   // elif scene3Pin == HIGH ...
-
-    // wait until I receive consistent data from the user
-    while (data == "")
+    
+    // understands which potentiometer triggered
+    else if(analogRead(pot0Pin) < (volume[0] - TOLLERANCE) || analogRead(pot0Pin) > (volume[0] + TOLLERANCE))
     {
-      data = Serial.readString();
-      t = TimeTriggerEventHandler(setmodePin, t, 1000);
-      if (t >= 2000)
-      {
-        exit_flag = 1;
-        break;
-      }
+      volume[0] = analogRead(pot0Pin);
+      if(selection != "P0")
+        Serial.println("P0");  
+      selection = "P0";
     }
-    if (exit_flag)
-      break;
-  
-    scenes[i] = data;
-    SaveSettings();
+    else if(analogRead(pot1Pin) < (volume[1] - TOLLERANCE) || analogRead(pot1Pin) > (volume[1] + TOLLERANCE))
+    {
+      volume[1] = analogRead(pot1Pin);
+      if(selection != "P1")
+        Serial.println("P1"); 
+      selection = "P1"; 
+    }
+    else if(analogRead(pot2Pin) < (volume[2] - TOLLERANCE) || analogRead(pot2Pin) > (volume[2] + TOLLERANCE))
+    {
+      volume[2] = analogRead(pot2Pin);
+      if(selection != "P2")
+        Serial.println("P2"); 
+      selection = "P2"; 
+    }
+      
+   while (digitalRead(scene0Pin) == HIGH || digitalRead(scene1Pin) == HIGH);
   }
   
+}
+
+
+int VolumeHandler(int volume, char i, int pin)
+{
+  volume = analogRead(pin);
+  Serial.println("SetInputVolume");
+  Serial.print("P");
+  Serial.println(i);
+  Serial.println(volume);
+  return volume;
 }
 
 
@@ -138,7 +134,7 @@ void loop()
     Serial.println("SetMode");
     SetMode();
     t = 0;
-    Serial.println("Normal Operation");
+    Serial.println("NormalOperation");
   }
 
   // record controls
@@ -165,25 +161,22 @@ void loop()
   else if(digitalRead(scene0Pin) == HIGH)
   {
     Serial.println("ChangeScene");
-    Serial.println(scenes[0]);
+    Serial.println("B0");
     while(digitalRead(scene0Pin) == HIGH);
   }
   else if(digitalRead(scene1Pin) == HIGH)
   {
     Serial.println("ChangeScene");
-    Serial.println(scenes[1]);
+    Serial.println("B1");
     while(digitalRead(scene1Pin) == HIGH);
   }
-  /*
-  Serial.println("SetInputVolume");
-  Serial.println(volumes[0]);
-  Serial.println(analogRead(pot0Pin));
-  Serial.println("SetInputVolume");
-  Serial.println(volumes[1]);
-  Serial.println(analogRead(pot1Pin));
-  Serial.println("SetInputVolume");
-  Serial.println(volumes[2]);
-  Serial.println(analogRead(pot2Pin));
-  */
+  
+  if(analogRead(pot0Pin) < (volume[0] - TOLLERANCE) || analogRead(pot0Pin) > (volume[0] + TOLLERANCE))
+    volume[0] = VolumeHandler(volume[0], '0', pot0Pin);
+  if(analogRead(pot1Pin) < (volume[1] - TOLLERANCE) || analogRead(pot1Pin) > (volume[1] + TOLLERANCE))
+    volume[1] = VolumeHandler(volume[1], '1', pot1Pin);
+  if(analogRead(pot2Pin) < (volume[2] - TOLLERANCE) || analogRead(pot2Pin) > (volume[2] + TOLLERANCE))
+    volume[2] = VolumeHandler(volume[2], '2', pot2Pin);
+  
   delay(DELAY);
 }

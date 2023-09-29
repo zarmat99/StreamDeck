@@ -34,6 +34,7 @@ def free_send():
     while True:
         print("COMMAND LIST\n"
               "- SetMode\n"
+              "- NormalOperation\n"
               " * key *\n"
               "- StartRecord\n"
               "- StopRecord\n"

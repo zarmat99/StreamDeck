@@ -7,8 +7,26 @@ import serial
 from obswebsocket import obsws, requests
 
 ser_data = ""
-logging.basicConfig(level=logging.DEBUG)
+mapping = {}
+#logging.basicConfig(level=logging.DEBUG)
 #sys.path.append('../')
+
+
+def save_settings(file_path):
+    global mapping
+    with open(file_path, 'w') as file:
+        for key, value in mapping.items():
+            raw = f"{key} {value}\n"
+            file.write(raw)
+
+
+def read_settings(file_path):
+    global mapping
+    mapping = {}
+    with open(file_path, 'r') as f_settings:
+        for raw in f_settings:
+            key, value = raw.strip().split(" ")
+            mapping[key] = value
 
 
 def map_to_db(value, min_value, max_value, min_db, max_db):
@@ -80,23 +98,24 @@ def wait_for_data():
 
 def set_mode():
     global ser_data
-    while "Normal Operation" not in ser_data:
+    global mapping
+    while "NormalOperation" not in ser_data:
         if ser_data in ["B0", "B1"]:
             acquire_scenes()
-            scene = input()
-            ser.write(scene.encode())
-            print(f"{scene} set in button {ser_data}")
+            mapping[ser_data] = input()
+            print(f"{mapping[ser_data]} set in button {ser_data}")
             ser_data = ""
         if ser_data in ["P0", "P1", "P2"]:
             acquire_volume_names()
-            volume = input()
-            ser.write(volume.encode())
-            print(f"{volume} set in button {ser_data}")
+            mapping[ser_data] = input()
+            print(f"{mapping[ser_data]} set in button {ser_data}")
             ser_data = ""
+        save_settings("settings.txt")
 
 
 def event_handler():
     global ser_data
+    global mapping
     res = ""
     if ser_data == "SetMode":
         set_mode()
@@ -117,18 +136,17 @@ def event_handler():
         res = ws.call(req)
     elif ser_data == "ChangeScene":
         wait_for_data()
-        print(f"scene name: {ser_data}")
-        req = requests.SetCurrentProgramScene(sceneName=ser_data)
+        print(f"scene name: {mapping[ser_data]}")
+        req = requests.SetCurrentProgramScene(sceneName=mapping[ser_data])
         res = ws.call(req)
-        print(res)
     elif ser_data == "SetInputVolume":
         wait_for_data()
-        volume_name = ser_data
+        volume_name = mapping[ser_data]
         print(f"volume input name: {volume_name}")
         wait_for_data()
         min_pot = 92
         max_pot = 1023
-        volume_value = map_to_db(ser_data, min_pot, max_pot, -100, 0)
+        volume_value = map_to_db(int(ser_data), min_pot, max_pot, -100, 0)
         print(f"volume value: {volume_value}")
         set_input_volume(volume_name, volume_value)
     ser_data = ""
@@ -153,7 +171,7 @@ if __name__ == '__main__':
     print("stream-deck 1.0 ALPHA5")
     ws = connect_obs_web_socket()
     ser = open_serial_communication()
-
+    read_settings("settings.txt")
     threading.Thread(target=read_ser_task).start()
     threading.Thread(target=main_task).start()
 
