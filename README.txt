@@ -21,14 +21,18 @@ StartStreaming starts streaming on OBS Studio
 - StopStreaming - 
 StopStreaming stops streaming on OBS Studio
 
+- SetInputVolume -
+SetInputVolume menages all the volumes in OBS Studio
+
 
 
 ############################
 Hardware currently supported
 ############################
 
-- 1 switch -> StartStreaming/StopStreaming
-- 1 switch -> StartRecord/StopRecord
-- 1 button -> SetMode
-- 2 button -> ChangeScene
+- 1 switch        -> StartStreaming/StopStreaming
+- 1 switch        -> StartRecord/StopRecord
+- 1 button        -> SetMode
+- 2 button        -> ChangeScene
+- 3 potentiometer -> SetInputVolume
 

@@ -1,5 +1,5 @@
 const int DELAY = 10;       //milliseconds
-const int TOLLERANCE = 10;
+const int TOLLERANCE = 0;
 const int MIN_POT = 93;
 const int MAX_POT = 1022;
 const int recordPin = 12;  
@@ -53,9 +53,9 @@ void SetMode()
   {
     // until a button to be set is pressed, do nothing except manage the exit event
     while (digitalRead(scene0Pin) == LOW && digitalRead(scene1Pin) == LOW && 
-           analogRead(pot0Pin) > (volume[0] - TOLLERANCE) && analogRead(pot0Pin) < (volume[0] + TOLLERANCE) &&
-           analogRead(pot1Pin) > (volume[1] - TOLLERANCE) && analogRead(pot1Pin) < (volume[1] + TOLLERANCE) &&
-           analogRead(pot2Pin) > (volume[2] - TOLLERANCE) && analogRead(pot2Pin) < (volume[2] + TOLLERANCE))   //and scene3 or scene4 ecc..
+           analogRead(pot0Pin) >= (volume[0] - TOLLERANCE) && analogRead(pot0Pin) <= (volume[0] + TOLLERANCE) &&
+           analogRead(pot1Pin) >= (volume[1] - TOLLERANCE) && analogRead(pot1Pin) <= (volume[1] + TOLLERANCE) &&
+           analogRead(pot2Pin) >= (volume[2] - TOLLERANCE) && analogRead(pot2Pin) <= (volume[2] + TOLLERANCE))   //and scene3 or scene4 ecc..
     {
       t = TimeTriggerEventHandler(setmodePin, t, DELAY);
       if (t >= 2000)

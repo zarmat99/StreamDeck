@@ -1,3 +1,4 @@
+import math
 import sys
 import time
 import logging
@@ -27,16 +28,24 @@ def read_settings(file_path):
         for raw in f_settings:
             key, value = raw.strip().split(" ")
             mapping[key] = value
+    print(mapping)
 
 
-def map_to_db(value, min_value, max_value, min_db, max_db):
-    value = max(min(value, max_value), min_value)
-    percentage = (value - min_value) / (max_value - min_value)
-    db_value = min_db + percentage * (max_db - min_db)
-    return db_value
+def pot_to_fader(pot_value):
+    min_pot = 94
+    max_pot = 1022
+    min_db = -100
+    max_db = 0
+    base_esponential = 10  
+    if pot_value <= min_pot:
+        return min_db
+    elif pot_value >= max_pot:
+        return max_db
+    db = ((math.log10(pot_value - min_pot + 1)) / (math.log10(max_pot - min_pot + 1))) * (max_db - min_db) + min_db
+    return db
 
 
-def connect_obs_web_socket(host="10.239.51.41", port=4455, password="ciaociao"):
+def connect_obs_web_socket(host="192.168.56.1", port=4455, password="ciaociao"):
     ws = obsws(host=host, port=port, password=password, legacy=0)
     try:
         ws.connect()
@@ -144,9 +153,7 @@ def event_handler():
         volume_name = mapping[ser_data]
         print(f"volume input name: {volume_name}")
         wait_for_data()
-        min_pot = 92
-        max_pot = 1023
-        volume_value = map_to_db(int(ser_data), min_pot, max_pot, -100, 0)
+        volume_value = pot_to_fader(int(ser_data))
         print(f"volume value: {volume_value}")
         set_input_volume(volume_name, volume_value)
     ser_data = ""
