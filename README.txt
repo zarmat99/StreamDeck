@@ -24,6 +24,9 @@ StopStreaming stops streaming on OBS Studio
 - SetInputVolume -
 SetInputVolume menages all the volumes in OBS Studio
 
+- Scripting Functions -
+the scripting functions are a module of functions that allows the user to create custom scripts and launch them via the buttons on the stramdeck. The functions implemented for scripting include: press, hold, release, combo, write
+
 
 
 ############################
@@ -33,6 +36,7 @@ Hardware currently supported
 - 1 switch        -> StartStreaming/StopStreaming
 - 1 switch        -> StartRecord/StopRecord
 - 1 button        -> SetMode
-- 2 button        -> ChangeScene
+- 4 buttons       -> ChangeScene
+- 4 buttons	  -> Scripting Functions
 - 3 potentiometer -> SetInputVolume
 
