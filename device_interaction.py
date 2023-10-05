@@ -13,7 +13,7 @@ def read_ser_task():
         time.sleep(0.1)
 
 
-def open_serial_communication(com_port="COM6", baud_rate=9600):
+def open_serial_communication(com_port="COM8", baud_rate=9600):
     try:
         ser = serial.Serial(com_port, baud_rate)
         print("serial connection success!")

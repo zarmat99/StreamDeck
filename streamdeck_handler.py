@@ -3,14 +3,15 @@ import sys
 import time
 import logging
 import threading
-import numpy as np
 import serial
 from obswebsocket import obsws, requests
+import scripting
 
 ser_data = ""
 mapping = {}
-#logging.basicConfig(level=logging.DEBUG)
-#sys.path.append('../')
+script = {}
+# logging.basicConfig(level=logging.DEBUG)
+# sys.path.append('../')
 
 
 def save_settings(file_path):
@@ -22,13 +23,16 @@ def save_settings(file_path):
 
 
 def read_settings(file_path):
-    global mapping
-    mapping = {}
+    mapping_dict = {}
     with open(file_path, 'r') as f_settings:
         for raw in f_settings:
-            key, value = raw.strip().split(" ")
-            mapping[key] = value
-    print(mapping)
+            try:
+                key, value = raw.strip().split(" ")
+                mapping_dict[key] = value
+            except:
+                print("error")
+    print(mapping_dict)
+    return mapping_dict
 
 
 def pot_to_fader(pot_value):
@@ -36,7 +40,7 @@ def pot_to_fader(pot_value):
     max_pot = 1022
     min_db = -100
     max_db = 0
-    base_esponential = 10  
+    base_esponential = 10
     if pot_value <= min_pot:
         return min_db
     elif pot_value >= max_pot:
@@ -45,7 +49,7 @@ def pot_to_fader(pot_value):
     return db
 
 
-def connect_obs_web_socket(host="192.168.56.1", port=4455, password="ciaociao"):
+def connect_obs_web_socket(host="10.239.51.41", port=4455, password="ciaociao"):
     ws = obsws(host=host, port=port, password=password, legacy=0)
     try:
         ws.connect()
@@ -78,8 +82,6 @@ def acquire_volume_names():
     req = requests.GetInputList()
     res = ws.call(req)
     volumes = data_from_json_response(res, "input")
-    for volume in volumes:
-        print(volume)
     return volumes
 
 
@@ -87,8 +89,6 @@ def acquire_scenes():
     req = requests.GetSceneList()
     res = ws.call(req)
     scenes = data_from_json_response(res, "scene")
-    for scene in scenes:
-        print(scene)
     return scenes
 
 
@@ -108,14 +108,12 @@ def wait_for_data():
 def set_mode():
     global ser_data
     global mapping
+    global scripts
     while "NormalOperation" not in ser_data:
-        if ser_data in ["B0", "B1"]:
-            acquire_scenes()
-            mapping[ser_data] = input()
-            print(f"{mapping[ser_data]} set in button {ser_data}")
-            ser_data = ""
-        if ser_data in ["P0", "P1", "P2"]:
-            acquire_volume_names()
+        if ser_data in ["B0", "B1", "B2", "B3", "P0", "P1", "P2", "G0", "G1", "G2", "G3"]:
+            print(f"scenes: {acquire_scenes()}")
+            print(f"volumes: {acquire_volume_names()}")
+            print(f"scripts: {scripts}")
             mapping[ser_data] = input()
             print(f"{mapping[ser_data]} set in button {ser_data}")
             ser_data = ""
@@ -156,6 +154,10 @@ def event_handler():
         volume_value = pot_to_fader(int(ser_data))
         print(f"volume value: {volume_value}")
         set_input_volume(volume_name, volume_value)
+    elif ser_data in ["G0", "G1", "G2", "G3"]:
+        print(f"executing {mapping[ser_data]} script...")
+        scripting.execute_script(scripts[mapping[ser_data]])
+        print("executed!Hello fromo StreamDeck! :)")
     ser_data = ""
     return res
 
@@ -174,11 +176,42 @@ def main_task():
         time.sleep(0.01)
 
 
+def scripting_mode():
+    global scripts
+    choice = ""
+    ser.write("DumbMode\n".encode())
+    while choice != "exit":
+        choice = input("1. create script\n"
+                       "2. execute script\n"
+                       "3. scripts list\n"
+                       "4. read scripts\n"
+                       "5. save scripts\n"
+                       "6. delete script\n")
+        if choice == "1":
+            scripts = scripting.create_script(scripts)
+        elif choice == "2":
+            scripting.execute_script(scripts)
+        elif choice == "3":
+            for key in scripts:
+                print(key)
+                print(scripts[key])
+        elif choice == "4":
+            scripts = scripting.read_script("scripts.txt")
+        elif choice == "5":
+            scripting.save_scripts("scripts.txt", scripts)
+        elif choice == "6":
+            scripts.pop(input("name: "))
+    ser.write("NormalOperation\n".encode())
+
+
 if __name__ == '__main__':
-    print("stream-deck 1.0 ALPHA5")
+    print("stream-deck 1.0 ALPHA7")
     ws = connect_obs_web_socket()
     ser = open_serial_communication()
-    read_settings("settings.txt")
+    mapping = read_settings("settings.txt")
+    scripts = scripting.read_script("scripts.txt")
+    print(scripts)
+    # scripting_mode()
     threading.Thread(target=read_ser_task).start()
     threading.Thread(target=main_task).start()
 
