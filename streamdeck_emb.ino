@@ -2,6 +2,8 @@ const int DELAY = 10;       //milliseconds
 const int TOLLERANCE = 1;
 const int MIN_POT = 93;
 const int MAX_POT = 1022;
+const int MAX_ANALOG_READ = 1023;
+const int MAX_ANALOG_WRITE = ((MAX_ANALOG_READ + 1) / 4) - 1;
 const int recordPin = 8;  
 const int streamPin = 9;   
 const int setmodePin = 2;
@@ -12,6 +14,8 @@ const int scene3Pin = 13;
 const int pot0Pin = A0;
 const int pot1Pin = A1;
 const int pot2Pin = A2;
+const int led0Pin = A3;
+const int led1Pin = A4;
 const int GenPur0Pin = 3;
 const int GenPur1Pin = 4;
 const int GenPur2Pin = 5;
@@ -36,6 +40,8 @@ void setup()
   pinMode(pot0Pin, INPUT);
   pinMode(pot1Pin, INPUT);
   pinMode(pot2Pin, INPUT);
+  pinMode(led0Pin, OUTPUT);
+  pinMode(led1Pin, OUTPUT);
   pinMode(GenPur0Pin, INPUT);
   pinMode(GenPur1Pin, INPUT);
   pinMode(GenPur2Pin, INPUT);
@@ -52,6 +58,11 @@ void setup()
   digitalWrite(GenPur1Pin, LOW);
   digitalWrite(GenPur2Pin, LOW);
   digitalWrite(GenPur3Pin, LOW);  
+  analogWrite(pot0Pin, 0);
+  analogWrite(pot1Pin, 0);
+  analogWrite(pot2Pin, 0);
+  analogWrite(led0Pin, 0);
+  analogWrite(led1Pin, 0);
   Serial.begin(9600);          
 }
 
@@ -210,12 +221,23 @@ void loop()
     Serial.println("NormalOperation");
   }
 
-  // DumbMode control
   if (Serial.available()) 
   {  
     String line = Serial.readStringUntil('\n'); 
+      
+    // DumbMode control
     if(line == "DumbMode")
       DumbMode(); 
+
+    // led state control
+    if(line == "RecordOnLed" )
+      analogWrite(led0Pin, MAX_ANALOG_WRITE);
+    if(line == "RecordOffLed" )
+      analogWrite(led0Pin, 0);
+    if(line == "StreamOnLed" )
+      analogWrite(led1Pin, MAX_ANALOG_WRITE);
+    if(line == "StreamOffLed" )
+      analogWrite(led1Pin, 0);
   }
 
   // record controls

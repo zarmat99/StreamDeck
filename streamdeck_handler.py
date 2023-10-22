@@ -8,9 +8,11 @@ from obswebsocket import obsws, requests
 import scripting
 
 ser_data = ""
+recording = 0
+streaming = 0
 mapping = {}
 script = {}
-# logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 # sys.path.append('../')
 
 
@@ -49,7 +51,7 @@ def pot_to_fader(pot_value):
     return db
 
 
-def connect_obs_web_socket(host="10.239.51.41", port=4455, password="ciaociao"):
+def connect_obs_web_socket(host="172.28.48.1", port=4455, password="ciaociao"):
     ws = obsws(host=host, port=port, password=password, legacy=0)
     try:
         ws.connect()
@@ -92,17 +94,23 @@ def acquire_scenes():
     return scenes
 
 
-def set_input_volume(volume_name, volume_value):
-    req = requests.SetInputVolume(inputName=volume_name, inputVolumeDb=int(volume_value))
-    res = ws.call(req)
-    print(res)
-
-
 def wait_for_data():
     global ser_data
     ser_data = ""
     while ser_data == "":
         pass
+
+
+def get_stream_state():
+    req = requests.GetStreamStatus()
+    res = ws.call(req).datain['outputActive']
+    return res
+
+
+def get_record_state():
+    req = requests.GetRecordStatus()
+    res = ws.call(req).datain['outputActive']
+    return res
 
 
 def set_mode():
@@ -123,29 +131,25 @@ def set_mode():
 def event_handler():
     global ser_data
     global mapping
+    global recording
+    global streaming
     res = ""
     if ser_data == "SetMode":
         set_mode()
     elif ser_data == "StartRecord":
-        req = requests.StartRecord()
-        res = ws.call(req)
+        ws.call(requests.StartRecord())
     elif ser_data == "StopRecord":
-        req = requests.StopRecord()
-        res = ws.call(req)
+        ws.call(requests.StopRecord())
     elif ser_data == "GetStreamStatus":
-        req = requests.GetRecordStatus()
-        res = ws.call(req)
+        ws.call(requests.GetRecordStatus())
     elif ser_data == "StartStream":
-        req = requests.StartStream()
-        res = ws.call(req)
+        ws.call(requests.StartStream())
     elif ser_data == "StopStream":
-        req = requests.StopStream()
-        res = ws.call(req)
+        ws.call(requests.StopStream())
     elif ser_data == "ChangeScene":
         wait_for_data()
         print(f"scene name: {mapping[ser_data]}")
-        req = requests.SetCurrentProgramScene(sceneName=mapping[ser_data])
-        res = ws.call(req)
+        ws.call(requests.SetCurrentProgramScene(sceneName=mapping[ser_data]))
     elif ser_data == "SetInputVolume":
         wait_for_data()
         volume_name = mapping[ser_data]
@@ -153,13 +157,27 @@ def event_handler():
         wait_for_data()
         volume_value = pot_to_fader(int(ser_data))
         print(f"volume value: {volume_value}")
-        set_input_volume(volume_name, volume_value)
+        ws.call(requests.SetInputVolume(inputName=volume_name, inputVolumeDb=int(volume_value)))
     elif ser_data in ["G0", "G1", "G2", "G3"]:
         print(f"executing {mapping[ser_data]} script...")
         scripting.execute_script(scripts[mapping[ser_data]])
-        print("executed!Hello fromo StreamDeck! :)")
+        print("executed!")
+
+    '''
+    if get_record_state() and recording == 0:
+        ser.write("RecordOnLed\n".encode())
+        recording = 1
+    elif get_record_state() is False and recording:
+        ser.write("RecordOffLed\n".encode())
+        recording = 0
+    if get_stream_state() and streaming == 0:
+        ser.write("StreamOnLed\n".encode())
+        streaming = 1
+    elif get_stream_state() is False and streaming:
+        ser.write("StreamOffLed\n".encode())
+        streaming = 0
+    '''
     ser_data = ""
-    return res
 
 
 def read_ser_task():
