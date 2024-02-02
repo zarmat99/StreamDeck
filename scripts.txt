@@ -1,8 +1,0 @@
-test
-press win
-delay 0.3
-write blocco note
-delay 0.1
-press enter
-delay 2
-write Hello fromo StreamDeck! :)

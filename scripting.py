@@ -1,36 +1,23 @@
 import time
 import pyautogui
+import json
 
 pyautogui.PAUSE = 0.01
+command_list = ["press", "hold", "release", "combo", "write", "delay"]
+
+def save_scripts(scripts):
+    with open('scripts.json', 'w') as file:
+        json.dump(scripts, file)
 
 
-def read_script(file_name):
+def load_scripts():
     dictionary = {}
-    key = None
-    raw_value = []
-    with open(file_name, 'r') as f:
-        for raw in f:
-            raw = raw.strip()
-            if key is None:
-                key = raw
-                raw_value = []
-            elif raw == "":
-                dictionary[key] = raw_value
-                key = None
-            else:
-                raw_value.append(raw)
-    if key is not None and raw_value:
-        dictionary[key] = raw_value
+    try:
+        with open("scripts.json", 'r') as file:
+            dictionary = json.load(file)
+    except FileNotFoundError:
+        print(FileNotFoundError)
     return dictionary
-
-
-def save_scripts(file_name, scripts):
-    with open(file_name, 'w') as f:
-        for key, list in scripts.items():
-            f.write(key + '\n')
-            for element in list:
-                f.write(element + '\n')
-            f.write('\n')
 
 
 def create_script(scripts):

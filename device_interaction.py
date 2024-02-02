@@ -42,7 +42,9 @@ def free_send():
               "- StopStreaming\n"
               "- ChangeScene\n"
               " * scene name *\n"
-              "- SetInputVolume\n")
+              "- SetInputVolume\n"
+              "- ExecuteScript\n"
+              " * script name *\n")
         ser.write(input().encode() + "\n".encode())
 
 

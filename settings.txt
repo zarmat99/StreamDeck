@@ -1,8 +1,0 @@
-P2 Mic
-P0 Audio
-B0 test0
-B1 test1
-B2 test2
-B3 test3
-G0 test
-P1 Cattura gioco
