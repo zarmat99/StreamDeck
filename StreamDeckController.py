@@ -56,15 +56,16 @@ class StreamDeckController:
         max_db = 0
         base_esponential = 10
         if pot_value <= min_pot:
-            return min_db
+            return min_pot, min_db
         elif pot_value >= max_pot:
-            return max_db
+            return max_pot, max_db
         db = ((math.log10(pot_value - min_pot + 1)) / (math.log10(max_pot - min_pot + 1))) * (max_db - min_db) + min_db
         return pot_value, db
 
-    def connect_obs_web_socket(self, host="192.168.0.57", port=4455, password="ciaociao"):
+    def connect_obs_web_socket(self, host="192.168.1.27", port=4455, password="ciaociao"):
         ws = obsws(host=host, port=port, password=password, legacy=0)
         try:
+            print(host)
             ws.connect()
             res = ws.call(requests.GetVersion()).getObsVersion()
             print(f"OBS Version: {res}")
@@ -195,11 +196,16 @@ class StreamDeckController:
                 self.ser_data = self.ser.readline().decode().strip()
                 print(f"> {self.ser_data}")
                 time.sleep(0.01)
-            except:
-                print("error reading serial!")
+            except Exception as e:
+                print(f"Error: {e}")
                 self.destroyer = 1
 
     def main_task(self):
+        time.sleep(2)
+        self.ser.write("start\n".encode())
+        print("start sent!")
+        while self.ser_data != "start ok":
+            pass
         while not self.destroyer:
             self.event_handler()
             time.sleep(0.01)

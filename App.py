@@ -5,8 +5,6 @@
 
 # to fix
 # - corregere il bug che non cambia colore il pot del volume se questo non è mappato
-# - lato embedded lanciare non più GX ma ExecuteScript e poi GX
-# - non viene salvato lo script in sdc.mapping
 
 # new implementation
 # - aggiungere la possibilità di cancellare un elemento dal mapping
