@@ -1,1052 +1,615 @@
-# implementation task:
-# - aggiungere il metodo update generale che dipende dalla pagina corrente in cui ci si trova
-# - accorpare la load online parameters in update online parameters (quindi aggiornare le label in real time)
-# - implementare la cancellazione di un elemento dal mapping
+import threading
+import time
 
-# to fix
-# - corregere il bug che non cambia colore il pot del volume se questo non è mappato
-
-# new implementation
-# - aggiungere la possibilità di cancellare un elemento dal mapping
-
-import tkinter as tk
-import tkinter.messagebox
-import customtkinter
 import PotentiometerWidget
 import StreamDeckController
+import logging
+from logging.handlers import RotatingFileHandler
+import tkinter as tk
+import customtkinter
 import json
-import scripting
-
-customtkinter.set_appearance_mode("Dark")
-customtkinter.set_default_color_theme("dark-blue")
-pages = {"connection": 0, "online": 1, "mapping": 2, "script": 3}
 
 
-class App(customtkinter.CTk):
-    def __init__(self):
-        super().__init__()
-        # ------------------- Variables -------------------------------------------------------------------------------
-        self.script_button = None
-        self.delete_script_button = None
-        self.clear_script_button = None
-        self.script_selected = None
-        self.save_script_button = None
-        self.delete_step_button = None
-        self.add_step_button = None
-        self.script_scrollable_frame = None
-        self.script_name_entry = None
-        self.script_list_combobox = None
-        self.script_page_title_label = None
-        self.script_page_bottom_frame = None
-        self.script_page_script_frame = None
-        self.script_page_title_frame = None
-        self.var_combobox_volumes = None
-        self.var_combobox_scenes = None
-        self.var_combobox_scripts = None
-        self.volume3_combobox = None
-        self.volume2_combobox = None
-        self.volume1_combobox = None
-        self.volume0_combobox = None
-        self.script3_button_combobox = None
-        self.script2_button_combobox = None
-        self.script1_button_combobox = None
-        self.script0_button_combobox = None
-        self.scene3_button_combobox = None
-        self.scene2_button_combobox = None
-        self.scene1_button_combobox = None
-        self.scene0_button_combobox = None
-        self.mapping_page_streams_frame = None
-        self.mapping_page_volumes_frame = None
-        self.mapping_page_script_frame = None
-        self.mapping_page_scenes_frame = None
-        self.back_to_online_button = None
-        self.mapping_page_title_label = None
-        self.mapping_page_bottom_frame = None
-        self.mapping_page_title_frame = None
-        self.mapping_button = None
-        self.script3_button_canvas = None
-        self.script3_button_label = None
-        self.script2_button_canvas = None
-        self.script2_button_label = None
-        self.script1_button_canvas = None
-        self.script1_button_label = None
-        self.script0_button_canvas = None
-        self.script0_button_label = None
-        self.online_page_script_frame = None
-        self.connection_info_button = None
-        self.online_page_bottom_frame = None
-        self.volume3_pot = None
-        self.volume3_label = None
-        self.volume2_pot = None
-        self.volume2_label = None
-        self.volume1_pot = None
-        self.volume1_label = None
-        self.volume0_pot = None
-        self.volume0_label = None
-        self.scene3_button_canvas = None
-        self.scene3_button_label = None
-        self.scene2_button_canvas = None
-        self.scene2_button_label = None
-        self.scene1_button_canvas = None
-        self.scene1_button_label = None
-        self.scene0_button_canvas = None
-        self.scene0_button_label = None
-        self.stream_button_label = None
-        self.record_button_label = None
-        self.stream_button_canvas = None
-        self.record_button = None
-        self.record_button_canvas = None
-        self.online_page_volumes_frame = None
-        self.online_page_scenes_frame = None
-        self.online_page_streams_frame = None
-        self.online_page_title_label = None
-        self.online_page_title_frame = None
-        self.streamdeck_configuration_label = None
-        self.connection_page_bottom_frame = None
-        self.connection_page_title_frame = None
-        self.connect_button = None
-        self.baud_rate_entry = None
-        self.baud_rate_label = None
-        self.com_port_entry = None
-        self.com_port_label = None
-        self.obs_configuration_label = None
-        self.password_entry = None
-        self.password_label = None
-        self.port_entry = None
-        self.port_label = None
-        self.host_entry = None
-        self.host_label = None
-        self.streamdeck_conf_frame = None
-        self.obs_conf_frame = None
-        self.connection_page_title_label = None
-        self.sdc = None
-        self.page = pages['connection']
-        self.current_script_combobox_list = []
-        self.current_script_entry_list = []
-        self.host_entry_var = tkinter.StringVar()
-        self.port_entry_var = tkinter.StringVar()
-        self.com_port_entry_var = tkinter.StringVar()
-        self.password_entry_var = tkinter.StringVar()
-        self.baud_rate_var = tkinter.StringVar()
-        # -------------------------------------------------------------------------------------------------------------
+class Logger:
+    def __init__(self, levels=[], filename=None, console=False):
+        self.accepted_levels = ['debug', 'info', 'warning', 'error', 'critical']
+        self.levels = levels
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - [%(levelname)s] > %(message)s')
 
-        # ------------------- Init ------------------------------------------------------------------------------------
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
-        # self.bind("<Configure>", self.resize)
-        self.load_settings()
-        self.create_connection_page()
-        self.grid_connection_page()
-        # -------------------------------------------------------------------------------------------------------------
+        for level in self.levels:
+            if level not in self.accepted_levels:
+                raise ValueError(f'logging level {level} not valid. Please, select an accepted logging level: {self.accepted_levels}')
 
-    # ----------------------------------------- M E T H O D S ---------------------------------------------------------
+        if filename:
+            file_path = 'logs/' + filename
+            file_handler = RotatingFileHandler(file_path, maxBytes=10*1024*1024, backupCount=5)
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
 
-    # ------------------- General Methods -----------------------------------------------------------------------------
-    def resize(self, event):
-        if self.volume0_pot is not None and self.volume1_pot is not None and self.volume2_pot is not None and self.volume3_pot is not None:
-            online_page_volumes_frame_width = event.width // 4
-            self.online_page_volumes_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-            self.volume0_pot.config(width=online_page_volumes_frame_width)
-            self.volume1_pot.config(width=online_page_volumes_frame_width)
-            self.volume2_pot.config(width=online_page_volumes_frame_width)
-            self.volume3_pot.config(width=online_page_volumes_frame_width)
-    # -----------------------------------------------------------------------------------------------------------------
+        if console:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.DEBUG)
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
 
-    # ------------------- Connection Page Methods ---------------------------------------------------------------------
-    def create_connection_page(self):
-        self.create_connection_page_frames()
-        self.create_connection_page_widgets_in_frames()
-        self.configure_connection_page_frames()
-        self.grid_connection_page_widgets_in_frames()
+    def debug(self, message):
+        if 'debug' in self.levels:
+            self.logger.debug(message)
 
-    def create_connection_page_frames(self):
-        self.connection_page_title_frame = customtkinter.CTkFrame(self)
-        self.obs_conf_frame = customtkinter.CTkFrame(self)
-        self.streamdeck_conf_frame = customtkinter.CTkFrame(self)
-        self.connection_page_bottom_frame = customtkinter.CTkFrame(self)
+    def info(self, message):
+        if 'info' in self.levels:
+            self.logger.info(message)
 
-    def create_connection_page_widgets_in_frames(self):
-        # connection_page_title_frame
-        self.connection_page_title_label = customtkinter.CTkLabel(self.connection_page_title_frame,
-                                                                  text="Connection Page",
-                                                                  font=customtkinter.CTkFont(size=25, weight="bold"))
-        # obs_conf_frame
-        self.obs_configuration_label = customtkinter.CTkLabel(self.obs_conf_frame, text="OBS Configurations",
-                                                              font=customtkinter.CTkFont(size=20))
-        self.host_label = customtkinter.CTkLabel(self.obs_conf_frame, text="Host",
-                                                 font=customtkinter.CTkFont(size=15))
-        self.host_entry = customtkinter.CTkEntry(self.obs_conf_frame, textvariable=self.host_entry_var)
-        self.port_label = customtkinter.CTkLabel(self.obs_conf_frame, text="Port",
-                                                 font=customtkinter.CTkFont(size=15))
-        self.port_entry = customtkinter.CTkEntry(self.obs_conf_frame, textvariable=self.port_entry_var)
-        self.password_label = customtkinter.CTkLabel(self.obs_conf_frame, text="Password",
-                                                     font=customtkinter.CTkFont(size=15))
-        self.password_entry = customtkinter.CTkEntry(self.obs_conf_frame, textvariable=self.password_entry_var)
-        # streamdeck_conf_frame
-        self.streamdeck_configuration_label = customtkinter.CTkLabel(self.streamdeck_conf_frame,
-                                                                     text="StreamDeck Configurations",
-                                                                     font=customtkinter.CTkFont(size=20))
-        self.com_port_label = customtkinter.CTkLabel(self.streamdeck_conf_frame, text="Com Port",
-                                                     font=customtkinter.CTkFont(size=15))
-        self.com_port_entry = customtkinter.CTkEntry(self.streamdeck_conf_frame, textvariable=self.com_port_entry_var)
-        self.baud_rate_label = customtkinter.CTkLabel(self.streamdeck_conf_frame, text="Baud Rate",
-                                                      font=customtkinter.CTkFont(size=15))
-        self.baud_rate_entry = customtkinter.CTkEntry(self.streamdeck_conf_frame, textvariable=self.baud_rate_var)
-        # connection_page_bottom_frame
-        self.connect_button = customtkinter.CTkButton(self.connection_page_bottom_frame, text="Connect",
-                                                      command=self.connect_button_event)
+    def warning(self, message):
+        if 'warning' in self.levels:
+            self.logger.warning(message)
 
-    def configure_connection_page_frames(self):
-        # connection_page_title_frame
-        self.connection_page_title_frame.grid_rowconfigure(0, weight=1)
-        self.connection_page_title_frame.grid_columnconfigure(0, weight=1)
-        # obs_conf_frame
-        self.obs_conf_frame.grid_rowconfigure((0, 1, 2, 3), weight=1)
-        self.obs_conf_frame.grid_columnconfigure((0, 1), weight=1)
-        # streamdeck_conf_frame
-        self.streamdeck_conf_frame.grid_rowconfigure((0, 1, 2), weight=1)
-        self.streamdeck_conf_frame.grid_columnconfigure((0, 1), weight=1)
-        # connection_page_bottom_frame
-        self.connection_page_bottom_frame.grid_rowconfigure(0, weight=1)
-        self.connection_page_bottom_frame.grid_columnconfigure(0, weight=1)
+    def error(self, message):
+        if 'error' in self.levels:
+            self.logger.error(message)
 
-    def grid_connection_page_widgets_in_frames(self):
-        # connection_page_title_frame
-        self.connection_page_title_label.grid(row=0, column=0)
-        # obs_conf_frame
-        self.obs_configuration_label.grid(row=0, column=0, columnspan=2)
-        self.host_label.grid(row=1, column=0)
-        self.host_entry.grid(row=1, column=1)
-        self.port_label.grid(row=2, column=0)
-        self.port_entry.grid(row=2, column=1)
-        self.password_label.grid(row=3, column=0)
-        self.password_entry.grid(row=3, column=1)
-        # streamdeck_conf_frame
-        self.streamdeck_configuration_label.grid(row=0, column=0, columnspan=2)
-        self.com_port_label.grid(row=1, column=0)
-        self.com_port_entry.grid(row=1, column=1)
-        self.baud_rate_label.grid(row=2, column=0)
-        self.baud_rate_entry.grid(row=2, column=1)
-        # connection_page_bottom_frame
-        self.connect_button.grid(row=0, column=0, sticky="e")
+    def critical(self, message):
+        if 'critical' in self.levels:
+            self.logger.critical(message)
 
-    def grid_connection_page(self):
-        # configure window
-        self.title("StreamDeck - Connection")
-        self.geometry(f"{800}x{400}")
 
-        # configure grid
+class BasePage(customtkinter.CTkFrame):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.frames = {}
+        self.labels = {}
+        self.entries = {}
+        self.buttons = {}
+        self.canvas = {}
+        self.comboboxes = {}
+        self.scrollable = {}
+
+    def change_window_name(self):
+        self.parent.title("Streamdeck - BasePage")
+
+    def show(self):
+        self.grid(row=0, column=0, sticky="nsew")
+        self.change_window_name()
+        # self.tkraise()
+
+    def hide(self):
+        self.grid_forget()
+
+    def create_page(self):
+        self.create_frames()
+        self.configure_frames()
+        self.create_widgets()
+        self.configure_widgets()
+        self.grid_widgets()
+        self.grid_frames()
+
+    def create_frames(self):
+        self.frames["title"] = customtkinter.CTkFrame(self, fg_color="gray25")
+        self.frames["body"] = customtkinter.CTkFrame(self, corner_radius=0)
+        self.frames["bottom"] = customtkinter.CTkFrame(self, fg_color="gray20", corner_radius=0)
+
+    def configure_frames(self):
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure((0, 1, 2, 3), weight=1)
-        self.reset_column_row_configure(column=0, row=3)
+        self.grid_rowconfigure(0, weight=4)
+        self.grid_rowconfigure(1, weight=10)
+        self.grid_rowconfigure(2, weight=1)
 
-        # grid frames
-        self.connection_page_title_frame.grid(row=0, column=0, sticky="nswe", padx=20, pady=(20, 5))
-        self.obs_conf_frame.grid(row=1, column=0, sticky="nswe", padx=20, pady=(5, 5))
-        self.streamdeck_conf_frame.grid(row=2, column=0,  sticky="nswe", padx=20, pady=(5, 5))
-        self.connection_page_bottom_frame.grid(row=3, column=0, sticky="nswe", padx=20, pady=(5, 20))
+    def grid_frames(self):
+        self.frames["title"].grid(row=0, column=0, sticky="nswe", padx=20, pady=(20, 5))
+        self.frames["body"].grid(row=1, column=0, sticky="nswe", padx=20, pady=(5, 0))
+        self.frames["bottom"].grid(row=2, column=0, sticky="nswe", padx=20, pady=(0, 20))
 
-    def forget_connection_page(self):
-        self.connection_page_title_frame.grid_forget()
-        self.streamdeck_conf_frame.grid_forget()
-        self.obs_conf_frame.grid_forget()
-        self.connection_page_bottom_frame.grid_forget()
+    def create_widgets(self):
+        pass
 
-    def connect_button_event(self):
-        if self.sdc is None:
-            connection_page_data = self.get_dict_connection_page_data()
-            self.sdc = StreamDeckController.StreamDeckController(connection_page_data['obs_data'],
-                                                                 connection_page_data['serial_data'])
-            self.sdc.start()
-        self.save_settings()
-        self.from_connection_page_to_online_page_event()
-    # -----------------------------------------------------------------------------------------------------------------
+    def configure_widgets(self):
+        pass
 
-    # ------------------- Online Page Methods -------------------------------------------------------------------------
-    def create_online_page(self):
-        self.create_online_page_frames()
-        self.create_online_page_widgets_in_frames()
-        self.configure_online_page_frames()
-        self.grid_online_page_widgets_in_frames()
+    def grid_widgets(self):
+        pass
 
-    def create_online_page_frames(self):
-        self.online_page_title_frame = customtkinter.CTkFrame(self)
-        self.online_page_streams_frame = customtkinter.CTkFrame(self)
-        self.online_page_scenes_frame = customtkinter.CTkFrame(self)
-        self.online_page_script_frame = customtkinter.CTkFrame(self)
-        self.online_page_volumes_frame = customtkinter.CTkFrame(self)
-        self.online_page_bottom_frame = customtkinter.CTkFrame(self)
 
-    def create_online_page_widgets_in_frames(self):
-        # online_page_title_frame
-        self.online_page_title_label = customtkinter.CTkLabel(self.online_page_title_frame, text="Online Page",
-                                                              font=customtkinter.CTkFont(size=25, weight="bold"))
-        # online_page_streams_frame
-        self.record_button_label = customtkinter.CTkLabel(self.online_page_streams_frame, text="Record State",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.record_button_canvas = tk.Canvas(self.online_page_streams_frame, width=70, height=70, bg="red")
-        self.stream_button_label = customtkinter.CTkLabel(self.online_page_streams_frame, text="Stream State",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.stream_button_canvas = tk.Canvas(self.online_page_streams_frame, width=70, height=70, bg="red")
-        # online_page_scenes_frame
-        self.scene0_button_label = customtkinter.CTkLabel(self.online_page_scenes_frame, text="Scene 0",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.scene0_button_canvas = tk.Canvas(self.online_page_scenes_frame, width=70, height=70, bg="grey")
-        self.scene1_button_label = customtkinter.CTkLabel(self.online_page_scenes_frame, text="Scene 1",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.scene1_button_canvas = tk.Canvas(self.online_page_scenes_frame, width=70, height=70, bg="grey")
-        self.scene2_button_label = customtkinter.CTkLabel(self.online_page_scenes_frame, text="Scene 2",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.scene2_button_canvas = tk.Canvas(self.online_page_scenes_frame, width=70, height=70, bg="grey")
-        self.scene3_button_label = customtkinter.CTkLabel(self.online_page_scenes_frame, text="Scene 3",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.scene3_button_canvas = tk.Canvas(self.online_page_scenes_frame, width=70, height=70, bg="grey")
-        # online_page_script_frame
-        self.script0_button_label = customtkinter.CTkLabel(self.online_page_script_frame, text="Script 0",
-                                                           font=customtkinter.CTkFont(size=15))
-        self.script0_button_canvas = tk.Canvas(self.online_page_script_frame, width=70, height=70, bg="grey")
-        self.script1_button_label = customtkinter.CTkLabel(self.online_page_script_frame, text="Script 1",
-                                                           font=customtkinter.CTkFont(size=15))
-        self.script1_button_canvas = tk.Canvas(self.online_page_script_frame, width=70, height=70, bg="grey")
-        self.script2_button_label = customtkinter.CTkLabel(self.online_page_script_frame, text="Script 2",
-                                                           font=customtkinter.CTkFont(size=15))
-        self.script2_button_canvas = tk.Canvas(self.online_page_script_frame, width=70, height=70, bg="grey")
-        self.script3_button_label = customtkinter.CTkLabel(self.online_page_script_frame, text="Script 3",
-                                                           font=customtkinter.CTkFont(size=15))
-        self.script3_button_canvas = tk.Canvas(self.online_page_script_frame, width=70, height=70, bg="grey")
-        # online_page_volumes_frame
-        self.volume0_label = customtkinter.CTkLabel(self.online_page_volumes_frame, text="Volume 0",
-                                                    font=customtkinter.CTkFont(size=15))
-        self.volume0_pot = PotentiometerWidget.PotentiometerWidget(self.online_page_volumes_frame, radius=40)
-        self.volume1_label = customtkinter.CTkLabel(self.online_page_volumes_frame, text="Volume 1",
-                                                    font=customtkinter.CTkFont(size=15))
-        self.volume1_pot = PotentiometerWidget.PotentiometerWidget(self.online_page_volumes_frame, radius=40)
-        self.volume2_label = customtkinter.CTkLabel(self.online_page_volumes_frame, text="Volume 2",
-                                                    font=customtkinter.CTkFont(size=15))
-        self.volume2_pot = PotentiometerWidget.PotentiometerWidget(self.online_page_volumes_frame, radius=40)
-        self.volume3_label = customtkinter.CTkLabel(self.online_page_volumes_frame, text="Volume 3",
-                                                    font=customtkinter.CTkFont(size=15))
-        self.volume3_pot = PotentiometerWidget.PotentiometerWidget(self.online_page_volumes_frame, radius=40)
+class ConnectionPage(BasePage):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.vars = {
+            'obs_data': {
+                'host': None,
+                'port': None,
+                'password': None
+            },
+            'serial_data': {
+                'com_port': None,
+                'baud_rate': None
+            }
+        }
+        self.create_page()
+
+    def change_window_name(self):
+        self.parent.title("Streamdeck - Connection")
+
+    def create_widgets(self):
+        # title_frame
+        self.labels["Connection Page"] = customtkinter.CTkLabel(self.frames["title"], text="Connection Page", font=customtkinter.CTkFont(size=25, weight="bold"))
+        # body_frame
+        self.labels["obs_configuration"] = customtkinter.CTkLabel(self.frames["body"], text="OBS Configurations", font=customtkinter.CTkFont(size=20))
+        self.labels["host"] = customtkinter.CTkLabel(self.frames["body"], text="Host", font=customtkinter.CTkFont(size=15))
+        self.entries["host"] = customtkinter.CTkEntry(self.frames["body"], textvariable=self.vars["obs_data"]["host"])
+        self.labels["port"] = customtkinter.CTkLabel(self.frames["body"], text="Port", font=customtkinter.CTkFont(size=15))
+        self.entries["port"] = customtkinter.CTkEntry(self.frames["body"], textvariable=self.vars["obs_data"]["port"])
+        self.labels["password"] = customtkinter.CTkLabel(self.frames["body"], text="Password", font=customtkinter.CTkFont(size=15))
+        self.entries["password"] = customtkinter.CTkEntry(self.frames["body"], textvariable=self.vars["obs_data"]["password"])
+        # streamdeck_conf_frame
+        self.labels["streamdeck_conf"] = customtkinter.CTkLabel(self.frames["body"], text="StreamDeck Configurations", font=customtkinter.CTkFont(size=20))
+        self.labels["com_port"] = customtkinter.CTkLabel(self.frames["body"], text="Com Port", font=customtkinter.CTkFont(size=15))
+        self.entries["com_port"] = customtkinter.CTkEntry(self.frames["body"], textvariable=self.vars["serial_data"]["com_port"])
+        self.labels["baud_rate"] = customtkinter.CTkLabel(self.frames["body"], text="Baud Rate", font=customtkinter.CTkFont(size=15))
+        self.entries["baud_rate"] = customtkinter.CTkEntry(self.frames["body"], textvariable=self.vars["serial_data"]["baud_rate"])
+        # bottom_frame
+        self.buttons["connect"] = customtkinter.CTkButton(self.frames["bottom"], text="Connect", command=lambda: self.parent.show_page(self.parent.pages['online']))
+
+    def configure_widgets(self):
+        # connection_page_title_frame
+        self.frames["title"].grid_rowconfigure(0, weight=1)
+        self.frames["title"].grid_columnconfigure(0, weight=1)
+        # body_frame
+        self.frames["body"].grid_rowconfigure((0, 1, 2, 3, 4, 5, 6), weight=1)
+        self.frames["body"].grid_columnconfigure((0, 1), weight=1)
+        # connection_page_bottom_frame
+        self.frames["bottom"].grid_rowconfigure(0, weight=1)
+        self.frames["bottom"].grid_columnconfigure(0, weight=1)
+
+    def grid_widgets(self):
+        # connection_page_title_frame
+        self.labels["Connection Page"].grid(row=0, column=0)
+        # body_frame
+        self.labels["obs_configuration"].grid(row=0, column=0, columnspan=2)
+        self.labels["host"].grid(row=1, column=0)
+        self.entries["host"].grid(row=1, column=1)
+        self.labels["port"].grid(row=2, column=0)
+        self.entries["port"].grid(row=2, column=1)
+        self.labels["password"].grid(row=3, column=0)
+        self.entries["password"].grid(row=3, column=1)
+        self.labels["streamdeck_conf"].grid(row=4, column=0, columnspan=2)
+        self.labels["com_port"].grid(row=5, column=0)
+        self.entries["com_port"].grid(row=5, column=1)
+        self.labels["baud_rate"].grid(row=6, column=0)
+        self.entries["baud_rate"].grid(row=6, column=1)
+        # connection_page_bottom_frame
+        self.buttons["connect"].grid(row=0, column=0, padx=(0, 20), sticky="e", pady=(0, 10))
+
+
+class OnlinePage(BasePage):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.create_page()
+
+    def change_window_name(self):
+        self.parent.title("Streamdeck - Online")
+
+    def create_widgets(self):
+        # title_frame
+        self.labels["online_page"] = customtkinter.CTkLabel(self.frames["title"], text="Online Page", font=customtkinter.CTkFont(size=25, weight="bold"))
+        # body_frame
+        self.labels["record_state"] = customtkinter.CTkLabel(self.frames["body"], text="Record State", font=customtkinter.CTkFont(size=15))
+        self.canvas["record_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
+        self.labels["stream_state"] = customtkinter.CTkLabel(self.frames["body"], text="Stream State", font=customtkinter.CTkFont(size=15))
+        self.canvas["stream_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
+        self.labels["scene_0"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 0", font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_0"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["scene_1"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 1", font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_1"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["scene_2"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 2", font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_2"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["scene_3"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 3", font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_3"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["script_0"] = customtkinter.CTkLabel(self.frames["body"], text="Script 0", font=customtkinter.CTkFont(size=15))
+        self.canvas["script_0"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["script_1"] = customtkinter.CTkLabel(self.frames["body"], text="Script 1", font=customtkinter.CTkFont(size=15))
+        self.canvas["script_1"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["script_2"] = customtkinter.CTkLabel(self.frames["body"], text="Script 2", font=customtkinter.CTkFont(size=15))
+        self.canvas["script_2"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["script_3"] = customtkinter.CTkLabel(self.frames["body"], text="Script 3", font=customtkinter.CTkFont(size=15))
+        self.canvas["script_3"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.labels["volume_0"] = customtkinter.CTkLabel(self.frames["body"], text="Volume 0", font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_0"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
+        self.labels["volume_1"] = customtkinter.CTkLabel(self.frames["body"], text="Volume 1", font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_1"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
+        self.labels["volume_2"] = customtkinter.CTkLabel(self.frames["body"], text="Volume 2", font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_2"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
+        self.labels["volume_3"] = customtkinter.CTkLabel(self.frames["body"], text="Volume 3", font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_3"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
         # online_page_bottom_frame
-        self.connection_info_button = customtkinter.CTkButton(self.online_page_bottom_frame, text="Connection Info",
-                                                              command=self.from_online_page_to_connection_page_event)
-        self.mapping_button = customtkinter.CTkButton(self.online_page_bottom_frame, text="Mapping",
-                                                      command=self.from_online_page_to_mapping_page_event,
-                                                      width=100)
-        self.script_button = customtkinter.CTkButton(self.online_page_bottom_frame, text="Script",
-                                                     command=self.from_online_page_to_script_page_event,
-                                                     width=100)
+        self.buttons["connection_page"] = customtkinter.CTkButton(self.frames["bottom"], text="Connection Page", command=lambda: self.parent.show_page(self.parent.pages['connection']))
+        self.buttons["mapping_page"] = customtkinter.CTkButton(self.frames["bottom"], text="Mapping Page", command=lambda: self.parent.show_page(self.parent.pages['mapping']))
+        self.buttons["script_page"] = customtkinter.CTkButton(self.frames["bottom"], text="Script Page", command=lambda: self.parent.show_page(self.parent.pages['script']))
 
-    def configure_online_page_frames(self):
-        # online_page_title_frame
-        self.online_page_title_frame.grid_rowconfigure(0, weight=1)
-        self.online_page_title_frame.grid_columnconfigure(0, weight=1)
-        # online_page_streams_frame
-        self.online_page_streams_frame.grid_rowconfigure((0, 1), weight=1)
-        self.online_page_streams_frame.grid_columnconfigure((0, 1), weight=1)
-        # online_page_scenes_frame
-        self.online_page_scenes_frame.grid_rowconfigure((0, 1), weight=1)
-        self.online_page_scenes_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        # online_page_script_frame
-        self.online_page_script_frame.grid_rowconfigure((0, 1), weight=1)
-        self.online_page_script_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        # online_page_volumes_frame
-        self.online_page_volumes_frame.grid_rowconfigure((0, 1), weight=1)
-        self.online_page_volumes_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+    def configure_widgets(self):
+        # title_frame
+        self.frames["title"].grid_rowconfigure(0, weight=1)
+        self.frames["title"].grid_columnconfigure(0, weight=1)
+        self.frames["body"].grid_rowconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        self.frames["body"].grid_columnconfigure((0, 1, 2, 3, 4, 5, 6, 7), weight=1)
+        self.frames["bottom"].grid_rowconfigure(0, weight=1)
+        self.frames["bottom"].grid_columnconfigure((0, 1, 2), weight=1)
+
+    def grid_widgets(self):
+        # title_frame
+        self.labels["online_page"].grid(row=0, column=0)
+        # body_frame
+        self.labels["record_state"].grid(row=0, column=0, columnspan=4, sticky="s")
+        self.labels["stream_state"].grid(row=0, column=4, columnspan=4, sticky="s")
+        self.canvas["record_state"].grid(row=1, column=0, columnspan=4)
+        self.canvas["stream_state"].grid(row=1, column=4, columnspan=4)
+        self.labels["scene_0"].grid(row=2, column=0, sticky="s")
+        self.labels["scene_1"].grid(row=2, column=1, sticky="s")
+        self.labels["scene_2"].grid(row=2, column=2, sticky="s")
+        self.labels["scene_3"].grid(row=2, column=3, sticky="s")
+        self.labels["script_0"].grid(row=2, column=4, sticky="s")
+        self.labels["script_1"].grid(row=2, column=5, sticky="s")
+        self.labels["script_2"].grid(row=2, column=6, sticky="s")
+        self.labels["script_3"].grid(row=2, column=7, sticky="s")
+        self.canvas["scene_0"].grid(row=3, column=0)
+        self.canvas["scene_1"].grid(row=3, column=1)
+        self.canvas["scene_2"].grid(row=3, column=2)
+        self.canvas["scene_3"].grid(row=3, column=3)
+        self.canvas["script_0"].grid(row=3, column=4)
+        self.canvas["script_1"].grid(row=3, column=5)
+        self.canvas["script_2"].grid(row=3, column=6)
+        self.canvas["script_3"].grid(row=3, column=7)
+        self.labels["volume_0"].grid(row=4, column=2, sticky="s")
+        self.labels["volume_1"].grid(row=4, column=3, sticky="s")
+        self.labels["volume_2"].grid(row=4, column=4, sticky="s")
+        self.labels["volume_3"].grid(row=4, column=5, sticky="s")
+        self.canvas["volume_0"].grid(row=5, column=2)
+        self.canvas["volume_1"].grid(row=5, column=3)
+        self.canvas["volume_2"].grid(row=5, column=4)
+        self.canvas["volume_3"].grid(row=5, column=5)
+        # bottom_frame
+        self.buttons["connection_page"].grid(row=0, column=0, sticky="w", padx=(20, 0), pady=(0, 10))
+        self.buttons["mapping_page"].grid(row=0, column=0, columnspan=3, sticky="e", padx=(0, 165), pady=(0, 10))
+        self.buttons["script_page"].grid(row=0, column=0, columnspan=3, sticky="e", padx=(0, 20), pady=(0, 10))
+
+
+class MappingPage(BasePage):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.create_page()
+
+    def change_window_name(self):
+        self.parent.title("Streamdeck - Mapping")
+
+    def create_widgets(self):
+        # title_frame
+        self.labels["online_page"] = customtkinter.CTkLabel(self.frames["title"], text="Mapping Page", font=customtkinter.CTkFont(size=25, weight="bold"))
+        # body_frame
+        self.labels["record_state"] = customtkinter.CTkLabel(self.frames["body"], text="Record State", font=customtkinter.CTkFont(size=15))
+        self.canvas["record_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
+        self.labels["stream_state"] = customtkinter.CTkLabel(self.frames["body"], text="Stream State", font=customtkinter.CTkFont(size=15))
+        self.canvas["stream_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
+        self.comboboxes["scene_0"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_0"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["scene_1"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_1"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["scene_2"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_2"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["scene_3"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["scene_3"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["script_0"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["script_0"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["script_1"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["script_1"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["script_2"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["script_2"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["script_3"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["script_3"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
+        self.comboboxes["volume_0"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_0"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
+        self.comboboxes["volume_1"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_1"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
+        self.comboboxes["volume_2"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_2"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
+        self.comboboxes["volume_3"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], font=customtkinter.CTkFont(size=15))
+        self.canvas["volume_3"] = PotentiometerWidget.PotentiometerWidget(self.frames["body"], color="gray20", radius=40)
         # online_page_bottom_frame
-        self.online_page_bottom_frame.grid_rowconfigure(0, weight=1)
-        self.online_page_bottom_frame.grid_columnconfigure(0, weight=1)
+        self.buttons["save"] = customtkinter.CTkButton(self.frames["bottom"], text="Save", command=lambda: self.parent.show_page(self.parent.pages['online']))
 
-    def grid_online_page_widgets_in_frames(self):
-        # online_page_title_frame
-        self.online_page_title_label.grid(row=0, column=0)
-        # online_page_streams_frame
-        self.record_button_label.grid(row=0, column=0)
-        self.stream_button_label.grid(row=0, column=1)
-        self.record_button_canvas.grid(row=1, column=0)
-        self.stream_button_canvas.grid(row=1, column=1)
-        # online_page_scenes_frame
-        self.scene0_button_label.grid(row=0, column=0)
-        self.scene1_button_label.grid(row=0, column=1)
-        self.scene2_button_label.grid(row=0, column=2)
-        self.scene3_button_label.grid(row=0, column=3)
-        self.scene0_button_canvas.grid(row=1, column=0)
-        self.scene1_button_canvas.grid(row=1, column=1)
-        self.scene2_button_canvas.grid(row=1, column=2)
-        self.scene3_button_canvas.grid(row=1, column=3)
-        # online_page_script_frame
-        self.script0_button_label.grid(row=0, column=0)
-        self.script1_button_label.grid(row=0, column=1)
-        self.script2_button_label.grid(row=0, column=2)
-        self.script3_button_label.grid(row=0, column=3)
-        self.script0_button_canvas.grid(row=1, column=0)
-        self.script1_button_canvas.grid(row=1, column=1)
-        self.script2_button_canvas.grid(row=1, column=2)
-        self.script3_button_canvas.grid(row=1, column=3)
-        # online_page_volumes_frame
-        self.volume0_label.grid(row=0, column=0, sticky="nsew")
-        self.volume1_label.grid(row=0, column=1, sticky="nsew")
-        self.volume2_label.grid(row=0, column=2, sticky="nsew")
-        self.volume3_label.grid(row=0, column=3, sticky="nsew")
-        self.volume0_pot.grid(row=1, column=0, sticky="nsew")
-        self.volume1_pot.grid(row=1, column=1, sticky="nsew")
-        self.volume2_pot.grid(row=1, column=2, sticky="nsew")
-        self.volume3_pot.grid(row=1, column=3, sticky="nsew")
+    def configure_widgets(self):
+        # title_frame
+        self.frames["title"].grid_rowconfigure(0, weight=1)
+        self.frames["title"].grid_columnconfigure(0, weight=1)
+        self.frames["body"].grid_rowconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        self.frames["body"].grid_columnconfigure((0, 1, 2, 3, 4, 5, 6, 7), weight=1)
+        self.frames["bottom"].grid_rowconfigure(0, weight=1)
+        self.frames["bottom"].grid_columnconfigure(0, weight=1)
+
+    def grid_widgets(self):
+        # title_frame
+        self.labels["online_page"].grid(row=0, column=0)
+        # body_frame
+        self.labels["record_state"].grid(row=0, column=0, columnspan=4, sticky="s")
+        self.labels["stream_state"].grid(row=0, column=4, columnspan=4, sticky="s")
+        self.canvas["record_state"].grid(row=1, column=0, columnspan=4)
+        self.canvas["stream_state"].grid(row=1, column=4, columnspan=4)
+        self.comboboxes["scene_0"].grid(row=2, column=0, sticky="s")
+        self.comboboxes["scene_1"].grid(row=2, column=1, sticky="s")
+        self.comboboxes["scene_2"].grid(row=2, column=2, sticky="s")
+        self.comboboxes["scene_3"].grid(row=2, column=3, sticky="s")
+        self.comboboxes["script_0"].grid(row=2, column=4, sticky="s")
+        self.comboboxes["script_1"].grid(row=2, column=5, sticky="s")
+        self.comboboxes["script_2"].grid(row=2, column=6, sticky="s")
+        self.comboboxes["script_3"].grid(row=2, column=7, sticky="s")
+        self.canvas["scene_0"].grid(row=3, column=0)
+        self.canvas["scene_1"].grid(row=3, column=1)
+        self.canvas["scene_2"].grid(row=3, column=2)
+        self.canvas["scene_3"].grid(row=3, column=3)
+        self.canvas["script_0"].grid(row=3, column=4)
+        self.canvas["script_1"].grid(row=3, column=5)
+        self.canvas["script_2"].grid(row=3, column=6)
+        self.canvas["script_3"].grid(row=3, column=7)
+        self.comboboxes["volume_0"].grid(row=4, column=2, sticky="s")
+        self.comboboxes["volume_1"].grid(row=4, column=3, sticky="s")
+        self.comboboxes["volume_2"].grid(row=4, column=4, sticky="s")
+        self.comboboxes["volume_3"].grid(row=4, column=5, sticky="s")
+        self.canvas["volume_0"].grid(row=5, column=2)
+        self.canvas["volume_1"].grid(row=5, column=3)
+        self.canvas["volume_2"].grid(row=5, column=4)
+        self.canvas["volume_3"].grid(row=5, column=5)
+        # bottom_frame
+        self.buttons["save"].grid(row=0, column=0, sticky="e", padx=(0, 20), pady=(0, 10))
+
+
+class ScriptPage(BasePage):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.create_page()
+
+    def change_window_name(self):
+        self.parent.title("Streamdeck - Script")
+
+    def create_widgets(self):
+        # title_frame
+        self.labels["script_page"] = customtkinter.CTkLabel(self.frames["title"], text="Script Page", font=customtkinter.CTkFont(size=25, weight="bold"))
+        # body_frame
+        self.comboboxes["script_list"] = customtkinter.CTkComboBox(self.frames["body"], values=[""], width=200)
+        self.entries["script_name"] = customtkinter.CTkEntry(self.frames["body"], width=200)
+        self.scrollable["steps_container"] = customtkinter.CTkScrollableFrame(self.frames["body"])
+        self.buttons["add_step"] = customtkinter.CTkButton(self.frames["body"], text="Add Step")
+        self.buttons["delete_step"] = customtkinter.CTkButton(self.frames["body"], text="Delete Step")
+        self.buttons["save_script"] = customtkinter.CTkButton(self.frames["body"], text="Save Script")
+        self.buttons["delete_script"] = customtkinter.CTkButton(self.frames["body"], text="Delete Script")
+        self.buttons["clear_script"] = customtkinter.CTkButton(self.frames["body"], text="Clear Script")
         # online_page_bottom_frame
-        self.connection_info_button.grid(row=0, column=0, sticky="w", padx=10)
-        self.script_button.grid(row=0, column=1, sticky="e", padx=(0, 5))
-        self.mapping_button.grid(row=0, column=2, sticky="e", padx=(5, 10))
+        self.buttons["online_page"] = customtkinter.CTkButton(self.frames["bottom"], text="Online Page", command=lambda: self.parent.show_page(self.parent.pages['online']))
 
-    def grid_online_page(self):
-        # configure window
-        self.title("StreamDeck - Online")
-        self.geometry(f"{800}x{400}")
+    def configure_widgets(self):
+        # title_frame
+        self.frames["title"].grid_rowconfigure(0, weight=1)
+        self.frames["title"].grid_columnconfigure(0, weight=1)
+        self.frames["body"].grid_rowconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        self.frames["body"].grid_columnconfigure(0, weight=4)
+        self.frames["body"].grid_columnconfigure(1, weight=1)
+        self.frames["bottom"].grid_rowconfigure(0, weight=1)
+        self.frames["bottom"].grid_columnconfigure(0, weight=1)
 
-        # configure grid
-        self.grid_columnconfigure((0, 1), weight=1)
-        self.grid_rowconfigure((0, 1, 2, 3, 4), weight=1)
-        self.reset_column_row_configure(column=1, row=4)
+    def grid_widgets(self):
+        # title_frame
+        self.labels["script_page"].grid(row=0, column=0)
+        # body_frame
+        self.comboboxes["script_list"].grid(row=0, column=0, sticky="w", padx=(40, 0), pady=(20, 10))
+        self.entries["script_name"].grid(row=0, column=0, sticky="e", padx=(0, 20), pady=(20, 10))
+        self.scrollable["steps_container"].grid(row=1, column=0, rowspan=5, padx=(20, 0), pady=(10, 20), sticky="nsew")
+        self.buttons["add_step"].grid(row=1, column=1)
+        self.buttons["delete_step"].grid(row=2, column=1)
+        self.buttons["save_script"].grid(row=3, column=1)
+        self.buttons["delete_script"].grid(row=4, column=1)
+        self.buttons["clear_script"].grid(row=5, column=1)
+        # online_page_bottom_frame
+        self.buttons["online_page"].grid(row=0, column=0, sticky="w", padx=(20, 0), pady=(0, 10))
 
-        # grid
-        self.online_page_title_frame.grid(row=0, column=0, columnspan=2, sticky="nswe", padx=20, pady=(20, 5))
-        self.online_page_streams_frame.grid(row=1, column=0, columnspan=2, sticky="nswe", padx=20, pady=(5, 5))
-        self.online_page_scenes_frame.grid(row=2, column=0, sticky="nswe", padx=(20, 5), pady=(5, 5))
-        self.online_page_script_frame.grid(row=2, column=1, sticky="nswe", padx=(5, 20), pady=(5, 5))
-        self.online_page_volumes_frame.grid(row=3, column=0, columnspan=2, sticky="nswe", padx=20, pady=(5, 5))
-        self.online_page_bottom_frame.grid(row=4, column=0, columnspan=2, sticky="nswe", padx=20, pady=(5, 20))
 
-    def forget_online_page(self):
-        self.online_page_title_frame.grid_forget()
-        self.online_page_streams_frame.grid_forget()
-        self.online_page_scenes_frame.grid_forget()
-        self.online_page_script_frame.grid_forget()
-        self.online_page_volumes_frame.grid_forget()
-        self.online_page_bottom_frame.grid_forget()
+class DataClass:
+    def __init__(self, app):
+        self.app = app
+        self.settings = {
+            'connection': {
+                'obs_data': {
+                    'host': None,
+                    'port': None,
+                    'password': None
+                },
+                'serial_data': {
+                    'com_port': None,
+                    'baud_rate': None
+                }
+            },
+            'online': {
 
-    def load_online_page_parameters(self):
-        self.var_combobox_scenes = self.sdc.get_scene_names()
-        self.var_combobox_scripts = list(self.sdc.script.keys())
-        self.var_combobox_volumes = self.sdc.get_volumes_names()
+            },
+            'script': {
 
-        if 'B0' in self.sdc.mapping:
-            self.scene0_button_label.configure(text=self.sdc.mapping['B0'])
-            self.scene0_button_canvas.configure(bg="grey")
-        else:
-            self.scene0_button_canvas.configure(bg="red")
-        if 'B1' in self.sdc.mapping:
-            self.scene1_button_label.configure(text=self.sdc.mapping['B1'])
-            self.scene1_button_canvas.configure(bg="grey")
-        else:
-            self.scene1_button_canvas.configure(bg="red")
-        if 'B2' in self.sdc.mapping:
-            self.scene2_button_label.configure(text=self.sdc.mapping['B2'])
-            self.scene2_button_canvas.configure(bg="grey")
-        else:
-            self.scene2_button_canvas.configure(bg="red")
-        if 'B3' in self.sdc.mapping:
-            self.scene3_button_label.configure(text=self.sdc.mapping['B3'])
-            self.scene3_button_canvas.configure(bg="grey")
-        else:
-            self.scene3_button_canvas.configure(bg="red")
-        if 'G0' in self.sdc.mapping:
-            self.script0_button_label.configure(text=self.sdc.mapping['G0'])
-            self.script0_button_canvas.configure(bg="grey")
-        else:
-            self.script0_button_canvas.configure(bg="red")
-        if 'G1' in self.sdc.mapping:
-            self.script1_button_label.configure(text=self.sdc.mapping['G1'])
-            self.script1_button_canvas.configure(bg="grey")
-        else:
-            self.script1_button_canvas.configure(bg="red")
-        if 'G2' in self.sdc.mapping:
-            self.script2_button_label.configure(text=self.sdc.mapping['G2'])
-            self.script2_button_canvas.configure(bg="grey")
-        else:
-            self.script2_button_canvas.configure(bg="red")
-        if 'G3' in self.sdc.mapping:
-            self.script3_button_label.configure(text=self.sdc.mapping['G3'])
-            self.script3_button_canvas.configure(bg="grey")
-        else:
-            self.script3_button_canvas.configure(bg="red")
-        if 'P0' in self.sdc.mapping:
-            self.volume0_label.configure(text=self.sdc.mapping['P0'])
-            self.volume0_pot.itemconfigure(self.volume0_pot.circle, fill="gray")
-        else:
-            self.volume0_pot.itemconfigure(self.volume0_pot.circle, fill="red")
-        if 'P1' in self.sdc.mapping:
-            self.volume1_label.configure(text=self.sdc.mapping['P1'])
-            self.volume1_pot.itemconfigure(self.volume1_pot.circle, fill="gray")
-        else:
-            self.volume1_pot.itemconfigure(self.volume1_pot.circle, fill="red")
-        if 'P2' in self.sdc.mapping:
-            self.volume2_label.configure(text=self.sdc.mapping['P2'])
-            self.volume2_pot.itemconfigure(self.volume2_pot.circle, fill="gray")
-        else:
-            self.volume2_pot.itemconfigure(self.volume2_pot.circle, fill="red")
-        if 'P3' in self.sdc.mapping:
-            self.volume3_label.configure(text=self.sdc.mapping['P3'])
-            self.volume3_pot.itemconfigure(self.volume3_pot.circle, fill="gray")
-        else:
-            self.volume3_pot.itemconfigure(self.volume3_pot.circle, fill="red")
+            },
+            'mapping': {
+                "B0": None,
+                "B1": None,
+                "B2": None,
+                "B3": None,
+                "P0": None,
+                "P1": None,
+                "P2": None,
+                "P3": None,
+                "G0": None,
+                "G1": None,
+                "G2": None,
+                "G3": None
+            }
+        }
 
-    def update_online_page_parameters(self):
-        scene_tuple = [
-            ("B0", self.scene0_button_canvas),
-            ("B1", self.scene1_button_canvas),
-            ("B2", self.scene2_button_canvas),
-            ("B3", self.scene3_button_canvas)
-        ]
-        script_tuple = [
-            ("G0", self.script0_button_canvas),
-            ("G1", self.script1_button_canvas),
-            ("G2", self.script2_button_canvas),
-            ("G3", self.script3_button_canvas)
-        ]
+    def update_settings(self):
+        self.update_connection_page_settings()
+        self.update_online_page_settings()
+        self.update_mapping_page_settings()
+        self.update_script_page_settings()
+        self.app.logger.debug(f"update settings ok")
 
-        # update record / streaming state
-        if self.sdc.get_record_state():
-            self.record_button_canvas.config(bg="yellow")
-        else:
-            self.record_button_canvas.config(bg="red")
-        if self.sdc.get_stream_state():
-            self.stream_button_canvas.config(bg="yellow")
-        else:
-            self.stream_button_canvas.config(bg="red")
+    def update_online_page_settings(self):
+        pass
 
-        for script, button_script_canvas in script_tuple:
-            if script in self.sdc.mapping:
-                bg_color = "yellow" if self.sdc.script_executing == script else "grey"
-            else:
-                bg_color = "red"
-            button_script_canvas.config(bg=bg_color)
+    def update_mapping_page_settings(self):
+        pass
 
-        for scene, button_scene_canvas in scene_tuple:
-            if scene in self.sdc.mapping:
-                bg_color = "yellow" if self.sdc.get_current_scene() == self.sdc.mapping[scene] else "grey"
-            else:
-                bg_color = "red"
-            button_scene_canvas.config(bg=bg_color)
+    def update_script_page_settings(self):
+        pass
 
-        volume_names = self.sdc.get_volumes_names()
-        for volume_name in volume_names:
-            if volume_name in self.sdc.mapping.values():
-                volume = self.sdc.get_volume(volume_name)
-                volume *= 1000
-            for key, value in self.sdc.mapping.items():
-                if value == volume_name:
-                    if key == "P0":
-                        self.volume0_pot.draw_ray_by_value(volume)
-                    elif key == "P1":
-                        self.volume1_pot.draw_ray_by_value(volume)
-                    elif key == "P2":
-                        self.volume2_pot.draw_ray_by_value(volume)
-                    elif key == "P3":
-                        self.volume3_pot.draw_ray_by_value(volume)
-        if self.page == pages['online']:
-            self.after(10, self.update_online_page_parameters)
-    # -----------------------------------------------------------------------------------------------------------------
+    def update_connection_page_settings(self):
+        self.settings['connection']['obs_data']['host'] = self.app.pages['connection'].entries['host'].get()
+        self.settings['connection']['obs_data']['port'] = self.app.pages['connection'].entries['port'].get()
+        self.settings['connection']['obs_data']['password'] = self.app.pages['connection'].entries['password'].get()
+        self.settings['connection']['serial_data']['com_port'] = self.app.pages['connection'].entries['com_port'].get()
+        self.settings['connection']['serial_data']['baud_rate'] = self.app.pages['connection'].entries['baud_rate'].get()
 
-    # ------------------- Mapping Page Methods ------------------------------------------------------------------------
-    def create_mapping_page(self):
-        self.create_mapping_page_frames()
-        self.create_mapping_page_widgets_in_frames()
-        self.configure_mapping_page_frames()
-        self.grid_mapping_page_widgets_in_frames()
-
-    def create_mapping_page_frames(self):
-        self.mapping_page_title_frame = customtkinter.CTkFrame(self)
-        self.mapping_page_streams_frame = customtkinter.CTkFrame(self)
-        self.mapping_page_scenes_frame = customtkinter.CTkFrame(self)
-        self.mapping_page_script_frame = customtkinter.CTkFrame(self)
-        self.mapping_page_volumes_frame = customtkinter.CTkFrame(self)
-        self.mapping_page_bottom_frame = customtkinter.CTkFrame(self)
-
-    def create_mapping_page_widgets_in_frames(self):
-        # mapping_page_title_frame
-        self.mapping_page_title_label = customtkinter.CTkLabel(self.mapping_page_title_frame, text="Mapping Page",
-                                                               font=customtkinter.CTkFont(size=25, weight="bold"))
-        # mapping_page_streams_frame
-        self.record_button_label = customtkinter.CTkLabel(self.mapping_page_streams_frame, text="Record State",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.record_button_canvas = tk.Canvas(self.mapping_page_streams_frame, width=70, height=70, bg="red")
-        self.stream_button_label = customtkinter.CTkLabel(self.mapping_page_streams_frame, text="Stream State",
-                                                          font=customtkinter.CTkFont(size=15))
-        self.stream_button_canvas = tk.Canvas(self.mapping_page_streams_frame, width=70, height=70, bg="red")
-        # mapping_page_scenes_frame
-        self.scene0_button_combobox = customtkinter.CTkComboBox(self.mapping_page_scenes_frame, values=[""],
-                                                                width=100)
-        self.scene0_button_canvas = tk.Canvas(self.mapping_page_scenes_frame, width=70, height=70, bg="grey")
-        self.scene1_button_combobox = customtkinter.CTkComboBox(self.mapping_page_scenes_frame, values=[""],
-                                                                width=100)
-        self.scene1_button_canvas = tk.Canvas(self.mapping_page_scenes_frame, width=70, height=70, bg="grey")
-        self.scene2_button_combobox = customtkinter.CTkComboBox(self.mapping_page_scenes_frame, values=[""],
-                                                                width=100)
-        self.scene2_button_canvas = tk.Canvas(self.mapping_page_scenes_frame, width=70, height=70, bg="grey")
-        self.scene3_button_combobox = customtkinter.CTkComboBox(self.mapping_page_scenes_frame, values=[""],
-                                                                width=100)
-        self.scene3_button_canvas = tk.Canvas(self.mapping_page_scenes_frame, width=70, height=70, bg="grey")
-
-        # mapping_page_script_frame
-        self.script0_button_combobox = customtkinter.CTkComboBox(self.mapping_page_script_frame, values=[""],
-                                                                 width=100)
-        self.script0_button_canvas = tk.Canvas(self.mapping_page_script_frame, width=70, height=70, bg="grey")
-        self.script1_button_combobox = customtkinter.CTkComboBox(self.mapping_page_script_frame, values=[""],
-                                                                 width=100)
-        self.script1_button_canvas = tk.Canvas(self.mapping_page_script_frame, width=70, height=70, bg="grey")
-        self.script2_button_combobox = customtkinter.CTkComboBox(self.mapping_page_script_frame, values=[""],
-                                                                 width=100)
-        self.script2_button_canvas = tk.Canvas(self.mapping_page_script_frame, width=70, height=70, bg="grey")
-        self.script3_button_combobox = customtkinter.CTkComboBox(self.mapping_page_script_frame, values=[""],
-                                                                 width=100)
-        self.script3_button_canvas = tk.Canvas(self.mapping_page_script_frame, width=70, height=70, bg="grey")
-
-        # mapping_page_volumes_frame
-        self.volume0_combobox = customtkinter.CTkComboBox(self.mapping_page_volumes_frame, values=[""],
-                                                          width=100)
-        self.volume0_pot = PotentiometerWidget.PotentiometerWidget(self.mapping_page_volumes_frame, radius=40)
-        self.volume1_combobox = customtkinter.CTkComboBox(self.mapping_page_volumes_frame, values=[""],
-                                                          width=100)
-        self.volume1_pot = PotentiometerWidget.PotentiometerWidget(self.mapping_page_volumes_frame, radius=40)
-        self.volume2_combobox = customtkinter.CTkComboBox(self.mapping_page_volumes_frame, values=[""],
-                                                          width=100)
-        self.volume2_pot = PotentiometerWidget.PotentiometerWidget(self.mapping_page_volumes_frame, radius=40)
-        self.volume3_combobox = customtkinter.CTkComboBox(self.mapping_page_volumes_frame, values=[""],
-                                                          width=100)
-        self.volume3_pot = PotentiometerWidget.PotentiometerWidget(self.mapping_page_volumes_frame, radius=40)
-
-        # mapping_page_bottom_frame
-        self.back_to_online_button = customtkinter.CTkButton(self.mapping_page_bottom_frame, text="Back to Online",
-                                                             command=self.from_mapping_page_to_online_page_event)
-
-    def configure_mapping_page_frames(self):
-        # mapping_page_title_frame
-        self.mapping_page_title_frame.grid_rowconfigure(0, weight=1)
-        self.mapping_page_title_frame.grid_columnconfigure(0, weight=1)
-        # mapping_page_streams_frame
-        self.mapping_page_streams_frame.grid_rowconfigure((0, 1), weight=1)
-        self.mapping_page_streams_frame.grid_columnconfigure((0, 1), weight=1)
-        # mapping_page_scenes_frame
-        self.mapping_page_scenes_frame.grid_rowconfigure((0, 1), weight=1)
-        self.mapping_page_scenes_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        # mapping_page_script_frame
-        self.mapping_page_script_frame.grid_rowconfigure((0, 1), weight=1)
-        self.mapping_page_script_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        # mapping_page_volumes_frame
-        self.mapping_page_volumes_frame.grid_rowconfigure((0, 1), weight=1)
-        self.mapping_page_volumes_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        # mapping_page_bottom_frame
-        self.mapping_page_bottom_frame.grid_rowconfigure(0, weight=1)
-        self.mapping_page_bottom_frame.grid_columnconfigure(0, weight=1)
-
-    def grid_mapping_page_widgets_in_frames(self):
-        # mapping_page_title_frame
-        self.mapping_page_title_label.grid(row=0, column=0)
-        # mapping_page_streams_frame
-        self.record_button_label.grid(row=0, column=0)
-        self.stream_button_label.grid(row=0, column=1)
-        self.record_button_canvas.grid(row=1, column=0)
-        self.stream_button_canvas.grid(row=1, column=1)
-        # mapping_page_scenes_frame
-        self.scene0_button_combobox.grid(row=0, column=0)
-        self.scene1_button_combobox.grid(row=0, column=1)
-        self.scene2_button_combobox.grid(row=0, column=2)
-        self.scene3_button_combobox.grid(row=0, column=3)
-        self.scene0_button_canvas.grid(row=1, column=0)
-        self.scene1_button_canvas.grid(row=1, column=1)
-        self.scene2_button_canvas.grid(row=1, column=2)
-        self.scene3_button_canvas.grid(row=1, column=3)
-        # mapping_page_script_frame
-        self.script0_button_combobox.grid(row=0, column=0)
-        self.script1_button_combobox.grid(row=0, column=1)
-        self.script2_button_combobox.grid(row=0, column=2)
-        self.script3_button_combobox.grid(row=0, column=3)
-        self.script0_button_canvas.grid(row=1, column=0)
-        self.script1_button_canvas.grid(row=1, column=1)
-        self.script2_button_canvas.grid(row=1, column=2)
-        self.script3_button_canvas.grid(row=1, column=3)
-        # mapping_page_volumes_frame
-        self.volume0_combobox.grid(row=0, column=0)
-        self.volume1_combobox.grid(row=0, column=1)
-        self.volume2_combobox.grid(row=0, column=2)
-        self.volume3_combobox.grid(row=0, column=3)
-        self.volume0_pot.grid(row=1, column=0, sticky="nsew")
-        self.volume1_pot.grid(row=1, column=1, sticky="nsew")
-        self.volume2_pot.grid(row=1, column=2, sticky="nsew")
-        self.volume3_pot.grid(row=1, column=3, sticky="nsew")
-        # mapping_page_bottom_frame
-        self.back_to_online_button.grid(row=0, column=0, columnspan=2, sticky="w")
-
-    def grid_mapping_page(self):
-        # configure window
-        self.title("StreamDeck - Mapping")
-        self.geometry(f"{800}x{400}")
-
-        # configure grid
-        self.grid_columnconfigure((0, 1), weight=1)
-        self.grid_rowconfigure((0, 1, 2, 3, 4), weight=1)
-        self.reset_column_row_configure(column=1, row=4)
-
-        # grid
-        self.mapping_page_title_frame.grid(row=0, column=0, columnspan=2, sticky="nswe", padx=20, pady=(20, 5))
-        self.mapping_page_streams_frame.grid(row=1, column=0, columnspan=2, sticky="nswe", padx=20, pady=(5, 5))
-        self.mapping_page_scenes_frame.grid(row=2, column=0, sticky="nswe", padx=(20, 5), pady=(5, 5))
-        self.mapping_page_script_frame.grid(row=2, column=1, sticky="nswe", padx=(5, 20), pady=(5, 5))
-        self.mapping_page_volumes_frame.grid(row=3, column=0, columnspan=2, sticky="nswe", padx=20, pady=(5, 5))
-        self.mapping_page_bottom_frame.grid(row=4, column=0, columnspan=2, sticky="nswe", padx=20, pady=(5, 20))
-
-    def forget_mapping_page(self):
-        self.mapping_page_title_frame.grid_forget()
-        self.mapping_page_streams_frame.grid_forget()
-        self.mapping_page_scenes_frame.grid_forget()
-        self.mapping_page_script_frame.grid_forget()
-        self.mapping_page_volumes_frame.grid_forget()
-        self.mapping_page_bottom_frame.grid_forget()
-
-    def load_mapping_page_parameters(self):
-        self.var_combobox_scenes = self.sdc.get_scene_names()
-        self.var_combobox_scripts = list(self.sdc.script.keys())
-        self.var_combobox_volumes = self.sdc.get_volumes_names()
-
-        self.scene0_button_combobox.configure(values=self.var_combobox_scenes)
-        self.scene1_button_combobox.configure(values=self.var_combobox_scenes)
-        self.scene2_button_combobox.configure(values=self.var_combobox_scenes)
-        self.scene3_button_combobox.configure(values=self.var_combobox_scenes)
-        self.script0_button_combobox.configure(values=self.var_combobox_scripts)
-        self.script1_button_combobox.configure(values=self.var_combobox_scripts)
-        self.script2_button_combobox.configure(values=self.var_combobox_scripts)
-        self.script3_button_combobox.configure(values=self.var_combobox_scripts)
-        self.volume0_combobox.configure(values=self.var_combobox_volumes)
-        self.volume1_combobox.configure(values=self.var_combobox_volumes)
-        self.volume2_combobox.configure(values=self.var_combobox_volumes)
-        self.volume3_combobox.configure(values=self.var_combobox_volumes)
-        self.scene0_button_combobox.set(value=self.sdc.mapping['B0'] if 'B0' in self.sdc.mapping.keys() else "")
-        self.scene1_button_combobox.set(value=self.sdc.mapping['B1'] if 'B1' in self.sdc.mapping.keys() else "")
-        self.scene2_button_combobox.set(value=self.sdc.mapping['B2'] if 'B2' in self.sdc.mapping.keys() else "")
-        self.scene3_button_combobox.set(value=self.sdc.mapping['B3'] if 'B3' in self.sdc.mapping.keys() else "")
-        self.script0_button_combobox.set(value=self.sdc.mapping['G0'] if 'G0' in self.sdc.mapping.keys() else "")
-        self.script1_button_combobox.set(value=self.sdc.mapping['G1'] if 'G1' in self.sdc.mapping.keys() else "")
-        self.script2_button_combobox.set(value=self.sdc.mapping['G2'] if 'G2' in self.sdc.mapping.keys() else "")
-        self.script3_button_combobox.set(value=self.sdc.mapping['G3'] if 'G3' in self.sdc.mapping.keys() else "")
-        self.volume0_combobox.set(value=self.sdc.mapping['P0'] if 'P0' in self.sdc.mapping.keys() else "")
-        self.volume1_combobox.set(value=self.sdc.mapping['P1'] if 'P1' in self.sdc.mapping.keys() else "")
-        self.volume2_combobox.set(value=self.sdc.mapping['P2'] if 'P2' in self.sdc.mapping.keys() else "")
-        self.volume3_combobox.set(value=self.sdc.mapping['P3'] if 'P3' in self.sdc.mapping.keys() else "")
-
-    def update_mapping_page_parameters(self):
-        combobox_scenes = [
-            ('B0', self.scene0_button_combobox, self.scene0_button_canvas),
-            ('B1', self.scene1_button_combobox, self.scene1_button_canvas),
-            ('B2', self.scene2_button_combobox, self.scene2_button_canvas),
-            ('B3', self.scene3_button_combobox, self.scene3_button_canvas)
-        ]
-        combobox_scripts = [
-            ('G0', self.script0_button_combobox, self.script0_button_canvas),
-            ('G1', self.script1_button_combobox, self.script1_button_canvas),
-            ('G2', self.script2_button_combobox, self.script2_button_canvas),
-            ('G3', self.script3_button_combobox, self.script3_button_canvas)
-        ]
-        combobox_volumes = [
-            ('P0', self.volume0_combobox, self.volume0_pot),
-            ('P1', self.volume1_combobox, self.volume1_pot),
-            ('P2', self.volume2_combobox, self.volume2_pot),
-            ('P3', self.volume3_combobox, self.volume3_pot)
-        ]
-
-        for button, combobox, canvas in combobox_scenes:
-            if combobox.get() in self.var_combobox_scenes:
-                self.sdc.mapping[button] = combobox.get()
-                canvas.config(bg="grey")
-            else:
-                canvas.config(bg="red")
-
-        for button, combobox, canvas in combobox_scripts:
-            if combobox.get() in self.var_combobox_scripts:
-                self.sdc.mapping[button] = combobox.get()
-                canvas.config(bg="grey")
-            else:
-                canvas.config(bg="red")
-
-        for pot, combobox, canvas in combobox_volumes:
-            if combobox.get() in self.var_combobox_volumes:
-                self.sdc.mapping[pot] = combobox.get()
-
-        if self.var_combobox_scenes != self.sdc.get_scene_names() or \
-                self.var_combobox_scripts != list(self.sdc.script.keys()) or \
-                self.var_combobox_volumes != self.sdc.get_volumes_names():
-            self.load_mapping_page_parameters()
-
-        if self.page == pages['mapping']:
-            self.after(100, self.update_mapping_page_parameters)
-    # -----------------------------------------------------------------------------------------------------------------
-
-    # ------------------- Script Page Methods ------------------------------------------------------------------------
-    def create_script_page(self):
-        self.create_script_page_frames()
-        self.create_script_page_widgets_in_frames()
-        self.configure_script_page_frames()
-        self.grid_script_page_widgets_in_frames()
-
-    def create_script_page_frames(self):
-        self.script_page_title_frame = customtkinter.CTkFrame(self)
-        self.script_page_script_frame = customtkinter.CTkFrame(self)
-        self.script_page_bottom_frame = customtkinter.CTkFrame(self)
-
-    def create_script_page_widgets_in_frames(self):
-        # script_page_title_frame
-        self.script_page_title_label = customtkinter.CTkLabel(self.script_page_title_frame, text="Script Page",
-                                                              font=customtkinter.CTkFont(size=25, weight="bold"))
-        # script_page_script_frame
-        self.script_list_combobox = customtkinter.CTkComboBox(self.script_page_script_frame, values=[""], width=200)
-        self.script_name_entry = customtkinter.CTkEntry(self.script_page_script_frame, width=200)
-        self.script_scrollable_frame = customtkinter.CTkScrollableFrame(self.script_page_script_frame, width=100,
-                                                                        height=200)
-        self.add_step_button = customtkinter.CTkButton(self.script_page_script_frame, text="Add Step",
-                                                       command=self.add_empty_step, width=90)
-        self.delete_step_button = customtkinter.CTkButton(self.script_page_script_frame, text="Delete Step",
-                                                          command=self.delete_step, width=90)
-        self.save_script_button = customtkinter.CTkButton(self.script_page_script_frame, text="Save Script",
-                                                          command=self.save_script, width=90)
-        self.delete_script_button = customtkinter.CTkButton(self.script_page_script_frame, text="Delete Script",
-                                                            command=self.delete_script, width=90)
-        self.clear_script_button = customtkinter.CTkButton(self.script_page_script_frame, text="Clear Script",
-                                                           command=self.clear_script, width=90)
-        # script_page_bottom_frame
-        self.back_to_online_button = customtkinter.CTkButton(self.script_page_bottom_frame, text="Back to Online",
-                                                             command=self.from_script_page_to_online_page_event)
-
-    def configure_script_page_frames(self):
-        # script_page_title_frame
-        self.script_page_title_frame.grid_rowconfigure(0, weight=1)
-        self.script_page_title_frame.grid_columnconfigure(0, weight=1)
-        # script_page_script_frame
-        self.script_page_script_frame.grid_rowconfigure((0, 1, 2, 3, 4, 5), weight=1)
-        self.script_page_script_frame.grid_columnconfigure((0, 1, 2), weight=1)
-        self.script_scrollable_frame.grid_rowconfigure((0, 1), weight=1)
-        # script_page_bottom_frame
-        self.script_page_bottom_frame.grid_rowconfigure(0, weight=1)
-        self.script_page_bottom_frame.grid_columnconfigure(0, weight=1)
-    
-    def grid_script_page_widgets_in_frames(self):
-        # script_page_title_frame
-        self.script_page_title_label.grid(row=0, column=0)
-        # script_page_script_frame
-        self.script_list_combobox.grid(row=0, column=0)
-        self.script_name_entry.grid(row=0, column=1)
-        self.delete_step_button.grid(row=1, column=2)
-        self.add_step_button.grid(row=2, column=2)
-        self.clear_script_button.grid(row=3, column=2)
-        self.delete_script_button.grid(row=4, column=2)
-        self.save_script_button.grid(row=5, column=2)
-        self.script_scrollable_frame.grid(row=1, column=0, columnspan=2, rowspan=5, pady=10, padx=10, sticky="nswe")
-        # script_page_bottom_frame
-        self.back_to_online_button.grid(row=0, column=0, sticky="w", padx=10)
-
-    def grid_script_page(self):
-        # configure window
-        self.title("StreamDeck - Script")
-        self.geometry(f"{800}x{400}")
-
-        # configure grid
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure((0, 1, 2), weight=1)
-        self.reset_column_row_configure(column=0, row=2)
-        
-        # grid
-        self.script_page_title_frame.grid(row=0, column=0, sticky="nswe", padx=20, pady=(20, 5))
-        self.script_page_script_frame.grid(row=1, column=0, sticky="nswe", padx=20, pady=(5, 5))
-        self.script_page_bottom_frame.grid(row=2, column=0, sticky="nswe", padx=20, pady=(5, 20))
-        
-    def forget_script_page(self):
-        self.script_page_title_frame.grid_forget()
-        self.script_page_script_frame.grid_forget()
-        self.script_page_bottom_frame.grid_forget()
-
-    def add_empty_step(self):
-        self.add_step("", "")
-
-    def add_step(self, command, value):
-        combobox = customtkinter.CTkComboBox(self.script_scrollable_frame, values=scripting.command_list)
-        entry = customtkinter.CTkEntry(self.script_scrollable_frame)
-        combobox.grid(row=len(self.current_script_combobox_list), column=0, padx=(0, 20), pady=5, sticky="")
-        entry.grid(row=len(self.current_script_entry_list), column=1, padx=(20, 0), pady=5, sticky="")
-        combobox.set(command)
-        entry.insert(0, value)
-        self.current_script_combobox_list.append(combobox)
-        self.current_script_entry_list.append(entry)
-        scripting.save_scripts(self.sdc.script)
-
-    def delete_step(self):
-        if len(self.current_script_combobox_list) > 0:
-            self.current_script_combobox_list[-1].destroy()
-            self.current_script_entry_list[-1].destroy()
-            self.current_script_combobox_list.pop()
-            self.current_script_entry_list.pop()
-            scripting.save_scripts(self.sdc.script)
-
-    def clear_script(self):
-        for widget in self.script_scrollable_frame.winfo_children():
-            widget.destroy()
-        self.current_script_combobox_list = []
-        self.current_script_entry_list = []
-
-    def save_script(self):
-        script_name = self.script_name_entry.get()
-        if script_name != "":
-            script = []
-            for i in range(len(self.current_script_combobox_list)):
-                command = self.current_script_combobox_list[i].get()
-                value = self.current_script_entry_list[i].get()
-                script.append(f"{command} {value}")
-            self.sdc.script[script_name] = script
-            self.load_script_page_parameters()
-            self.script_list_combobox.set(value=script_name)
-            self.script_selected = script_name
-            scripting.save_scripts(self.sdc.script)
-
-    def delete_script(self):
-        script_name = self.script_name_entry.get()
-        if script_name != "":
-            del self.sdc.script[script_name]
-            self.load_script_page_parameters()
-            self.script_list_combobox.set(value="")
-            self.script_selected = ""
-            scripting.save_scripts(self.sdc.script)
-
-            keys_to_remove = []
-            for key, value in self.sdc.mapping.items():
-                if value == script_name:
-                    keys_to_remove.append(key)
-            for key in keys_to_remove:
-                del self.sdc.mapping[key]
-            self.sdc.save_settings()
-
-            self.clear_script()
-            self.script_name_entry.insert(0, "")
-
-    def load_script_page_parameters(self):
-        script_list = self.sdc.script.keys()
-        self.script_list_combobox.configure(values=script_list)
-        self.script_list_combobox.set(value="")
-        self.script_selected = self.script_list_combobox.get()
-    
-    def update_script_page_parameters(self):
-        if self.script_list_combobox.get() != self.script_selected:
-            self.script_selected = self.script_list_combobox.get()
-            self.script_name_entry.delete(0, tk.END)
-            self.script_name_entry.insert(0, self.script_selected)
-            for widget in self.script_scrollable_frame.winfo_children():
-                widget.destroy()
-            self.current_script_combobox_list = []
-            self.current_script_entry_list = []
-            for step in self.sdc.script[self.script_selected]:
-                command = step.split(" ")[0]
-                value = step.split(" ")[1]
-                self.add_step(command, value)
-
-        if self.page == pages['script']:
-            self.after(100, self.update_script_page_parameters)
-    # -----------------------------------------------------------------------------------------------------------------
-    
-    # ------------------- Change Page Methods -------------------------------------------------------------------------
-    def from_connection_page_to_online_page_event(self):
-        self.page = pages['online']
-        self.forget_connection_page()
-        self.create_online_page()
-        self.grid_online_page()
-        self.load_online_page_parameters()
-        self.after(100, self.update_online_page_parameters)
-
-    def from_online_page_to_connection_page_event(self):
-        self.page = pages['connection']
-        self.forget_online_page()
-        self.create_connection_page()
-        self.grid_connection_page()
-        self.after(500, self.reset_streamdeck_controller)
-
-    def from_online_page_to_mapping_page_event(self):
-        self.page = pages['mapping']
-        self.forget_online_page()
-        self.create_mapping_page()
-        self.grid_mapping_page()
-        self.load_mapping_page_parameters()
-        self.after(100, self.update_mapping_page_parameters)
-
-    def from_mapping_page_to_online_page_event(self):
-        self.page = pages['online']
-        self.sdc.save_settings()
-        self.forget_mapping_page()
-        self.create_online_page()
-        self.grid_online_page()
-        self.load_online_page_parameters()
-        self.after(100, self.update_online_page_parameters)
-        
-    def from_online_page_to_script_page_event(self):
-        self.page = pages['script']
-        self.forget_online_page()
-        self.create_script_page()
-        self.grid_script_page()
-        self.load_script_page_parameters()
-        self.after(100, self.update_script_page_parameters)
-        
-    def from_script_page_to_online_page_event(self):
-        self.page = pages['online']
-        self.forget_script_page()
-        self.create_online_page()
-        self.grid_online_page()
-        self.load_online_page_parameters()
-        self.after(100, self.update_online_page_parameters)
-    # -----------------------------------------------------------------------------------------------------------------
-
-    # ------------------- Get Data Methods ----------------------------------------------------------------------------
-    def get_dict_connection_page_data(self):
-        obs_data = {'host': self.host_entry_var.get(),
-                    'port': self.port_entry_var.get(),
-                    'password': self.password_entry_var.get()}
-        serial_data = {'com_port': self.com_port_entry_var.get(),
-                       'baud_rate': int(self.baud_rate_var.get())}
-        return {'obs_data': obs_data, 'serial_data': serial_data}
-
-    def get_dict_data(self):
-        settings = {'connection_page': self.get_dict_connection_page_data()}
-        return settings
-    # -----------------------------------------------------------------------------------------------------------------
-
-    # ------------------- Save/Load Methods ---------------------------------------------------------------------------
     def save_settings(self):
         with open('settings.json', 'w') as file:
-            json.dump(self.get_dict_data(), file)
+            json.dump(self.settings, file)
+            self.app.logger.debug("settings.json save ok")
+
+    def update_widgets(self, page):
+        if page == self.app.pages['connection']:
+            self.update_connection_page_widgets()
+        elif page == self.app.pages['online']:
+            self.update_online_page_widgets()
+        elif page == self.app.pages['mapping']:
+            self.update_mapping_page_widgets()
+        elif page == self.app.pages['script']:
+            self.update_script_page_widgets()
+        self.app.logger.debug(f"widget update ok: {page}")
+
+    def update_connection_page_widgets(self):
+        self.app.pages['connection'].entries['host'].insert(0, self.settings['connection']['obs_data']['host'] or "")
+        self.app.pages['connection'].entries['port'].insert(0, self.settings['connection']['obs_data']['port'] or "")
+        self.app.pages['connection'].entries['password'].insert(0, self.settings['connection']['obs_data']['password'] or "")
+        self.app.pages['connection'].entries['com_port'].insert(0, self.settings['connection']['serial_data']['com_port'] or "")
+        self.app.pages['connection'].entries['baud_rate'].insert(0, self.settings['connection']['serial_data']['baud_rate'] or "")
+
+    def update_online_page_widgets(self):
+        pass
+
+    def update_mapping_page_widgets(self):
+        pass
+
+    def update_script_page_widgets(self):
+        pass
 
     def load_settings(self):
         try:
             with open('settings.json', 'r') as file:
                 settings = json.load(file)
-                self.host_entry_var.set(settings['connection_page']['obs_data']['host'])
-                self.port_entry_var.set(settings['connection_page']['obs_data']['port'])
-                self.password_entry_var.set(settings['connection_page']['obs_data']['password'])
-                self.com_port_entry_var.set(settings['connection_page']['serial_data']['com_port'])
-                self.baud_rate_var.set(str(settings['connection_page']['serial_data']['baud_rate']))
-        except FileNotFoundError as error:
-            print(error)
-    # -----------------------------------------------------------------------------------------------------------------
+                self.settings = settings
+                self.app.logger.debug("settings.json load ok")
+        except FileNotFoundError:
+            self.save_settings()
+            self.app.logger.debug("settings.json creation ok")
 
-    def reset_column_row_configure(self, column, row):
-        for i in range(row+1, 10):
-            self.grid_rowconfigure(i, weight=0)
-        for i in range(column+1, 10):
-            self.grid_columnconfigure(i, weight=0)
 
-    def reset_streamdeck_controller(self):
-        self.sdc.ser.close()
+class Application(customtkinter.CTk):
+    def __init__(self):
+        super().__init__()
+        # class variables
+        self.pages = {}
+        self.current_page = None
+        # class objects
+        self.logger = None
+        self.settings = None
         self.sdc = None
+        # init application
+        self.init()
 
-    def on_close(self):
-        self.save_settings()
-        if self.sdc is not None:
-            self.sdc.ws.disconnect()
-            self.sdc.ser.close()
-            self.sdc.destroy()
-        self.destroy()
+    def init(self):
+        self.init_logger()
+        self.init_graphic()
+        self.init_data()
+        self.init_app_mainloop()
+        self.logger.debug(self.settings.settings)
+
+    def init_graphic(self):
+        self.geometry("800x400")
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self.add_pages()
+
+    def init_data(self):
+        self.settings = DataClass(self)
+        self.settings.load_settings()
+        for page in self.pages:
+            self.show_page(self.pages[page])
+            self.settings.update_widgets(self.current_page)
+        self.show_page(self.pages['online'])
+
+    def init_logger(self):
+        self.logger = Logger(levels=['debug', 'info'], filename='logs.log', console=True)
+        self.logger.debug("* * *  New App Execution * * *")
+
+    def init_app_mainloop(self):
+        threading.Thread(target=self.task_app_mainloop, daemon=True).start()
+
+    def add_pages(self):
+        self.pages['connection'] = ConnectionPage(self)
+        self.pages['online'] = OnlinePage(self)
+        self.pages['mapping'] = MappingPage(self)
+        self.pages['script'] = ScriptPage(self)
+
+    def show_page(self, page):
+        if self.current_page:
+            self.current_page.hide()
+        self.current_page = page
+        self.current_page.show()
+
+    def connection_page_handler(self):
+        pass
+
+    def online_page_handler(self):
+        pass
+
+    def mapping_page_handler(self):
+        pass
+
+    def script_page_handler(self):
+        pass
+
+    def task_app_mainloop(self):
+        previous_page = self.current_page
+        time_diff = -1
+        while True:
+            time_start = time.time()
+
+            if self.current_page != previous_page:
+                self.logger.debug("---------- CHANGE PAGE ----------")
+                self.settings.update_settings()
+                self.settings.save_settings()
+                previous_page = self.current_page
+                self.logger.debug(self.settings.settings)
+
+            if self.current_page == self.pages['connection']:
+                self.connection_page_handler()
+            elif self.current_page == self.pages['online']:
+                self.online_page_handler()
+            elif self.current_page == self.pages['mapping']:
+                self.mapping_page_handler()
+            elif self.current_page == self.pages['script']:
+                self.script_page_handler()
+
+            if round(time.time() - time_start, 3) != round(time_diff, 3):
+                time_diff = time.time() - time_start
+                self.logger.info(f"thread execution time = {round(time_diff, 3)} seconds")
+
+            time.sleep(0.01)
 
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    customtkinter.set_appearance_mode("Dark")
+    application = Application()
+    application.mainloop()
