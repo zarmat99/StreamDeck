@@ -4,10 +4,10 @@ import math
 
 
 class PotentiometerWidget(customtkinter.CTkCanvas):
-    def __init__(self, master, radius, pot_func="linear", range_max=1000, **kwargs):
+    def __init__(self, master, radius, color="gray20", pot_func="linear", range_max=1000, **kwargs):
         super().__init__(master, **kwargs)
         self.circle = None
-        self.configure(bg="gray13", highlightbackground="gray13")
+        self.configure(bg=color, highlightbackground=color)
         self.angle_degrees_limit = 270
         self.pot_value = 0
         self.pot_func = pot_func
@@ -66,7 +66,7 @@ class PotentiometerWidget(customtkinter.CTkCanvas):
 class PotentiometerApp:
     def __init__(self, root):
         self.root = root
-        self.potentiometer = PotentiometerWidget(root, radius=100)
+        self.potentiometer = PotentiometerWidget(root, color="gray20", radius=100)
         self.potentiometer.pack(expand=True, fill=tk.BOTH)
 
         self.scale = tk.Scale(root, from_=0, to=1000, orient=tk.HORIZONTAL, command=self.update_potentiometer)

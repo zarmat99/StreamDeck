@@ -1,13 +1,12 @@
 import threading
 import time
-
 import PotentiometerWidget
-import StreamDeckController
 import logging
 from logging.handlers import RotatingFileHandler
 import tkinter as tk
 import customtkinter
 import json
+import StreamDeckController_New
 
 
 class Logger:
@@ -199,6 +198,7 @@ class OnlinePage(BasePage):
         self.canvas["record_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
         self.labels["stream_state"] = customtkinter.CTkLabel(self.frames["body"], text="Stream State", font=customtkinter.CTkFont(size=15))
         self.canvas["stream_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
+        self.entries["sd_state"] = customtkinter.CTkLabel(self.frames["body"], text="State: Offline", font=customtkinter.CTkFont(size=15))
         self.labels["scene_0"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 0", font=customtkinter.CTkFont(size=15))
         self.canvas["scene_0"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
         self.labels["scene_1"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 1", font=customtkinter.CTkFont(size=15))
@@ -245,6 +245,7 @@ class OnlinePage(BasePage):
         self.labels["stream_state"].grid(row=0, column=4, columnspan=4, sticky="s")
         self.canvas["record_state"].grid(row=1, column=0, columnspan=4)
         self.canvas["stream_state"].grid(row=1, column=4, columnspan=4)
+        self.entries["sd_state"].grid(row=1, column=0, columnspan=8)
         self.labels["scene_0"].grid(row=2, column=0, sticky="s")
         self.labels["scene_1"].grid(row=2, column=1, sticky="s")
         self.labels["scene_2"].grid(row=2, column=2, sticky="s")
@@ -519,6 +520,7 @@ class Application(customtkinter.CTk):
     def __init__(self):
         super().__init__()
         # class variables
+        self.new_page = False
         self.pages = {}
         self.current_page = None
         # class objects
@@ -533,7 +535,6 @@ class Application(customtkinter.CTk):
         self.init_graphic()
         self.init_data()
         self.init_app_mainloop()
-        self.logger.debug(self.settings.settings)
 
     def init_graphic(self):
         self.geometry("800x400")
@@ -549,8 +550,21 @@ class Application(customtkinter.CTk):
             self.settings.update_widgets(self.current_page)
         self.show_page(self.pages['online'])
 
+    def init_sdc(self):
+        self.sdc = StreamDeckController_New.StreamDeckController(self)
+        ws, ser = self.sdc.connect()
+        if ser is None:
+            self.logger.debug("init_sdc error, serial error")
+            return False
+        if ws is None:
+            self.logger.error("init_sdc error: obsws error")
+            return False
+        if self.sdc is not None:
+            self.logger.debug("init_sdc ok")
+        return True
+
     def init_logger(self):
-        self.logger = Logger(levels=['debug', 'info'], filename='logs.log', console=True)
+        self.logger = Logger(levels=['debug', 'error'], filename='logs.log', console=True)
         self.logger.debug("* * *  New App Execution * * *")
 
     def init_app_mainloop(self):
@@ -572,7 +586,73 @@ class Application(customtkinter.CTk):
         pass
 
     def online_page_handler(self):
-        pass
+        scene_tuple = [
+            ("B0", self.current_page.canvas["scene_0"]),
+            ("B1", self.current_page.canvas["scene_1"]),
+            ("B2", self.current_page.canvas["scene_2"]),
+            ("B3", self.current_page.canvas["scene_3"])
+        ]
+        script_tuple = [
+            ("G0", self.current_page.canvas["script_0"]),
+            ("G1", self.current_page.canvas["script_1"]),
+            ("G2", self.current_page.canvas["script_2"]),
+            ("G3", self.current_page.canvas["script_3"])
+        ]
+        mapping = self.settings.settings['mapping']
+        # check for new page first iteration
+        if self.new_page:
+            self.current_page.entries['sd_state'].configure(text="State: Connecting...")
+            if self.sdc is None and not self.init_sdc():
+                self.sdc = None
+                self.current_page.entries['sd_state'].configure(text="State: Offline")
+            else:
+                self.current_page.entries['sd_state'].configure(text="State: Online")
+            self.new_page = False
+        # online page routine
+        if self.sdc is not None:
+            # update record / streaming state
+            if self.sdc.get_record_state():
+                self.current_page.canvas["record_state"].config(bg="yellow")
+                self.sdc.ser.write("RecordOnLed\n".encode())
+            else:
+                self.current_page.canvas["record_state"].config(bg="red")
+                self.sdc.ser.write("RecordOffLed\n".encode())
+            if self.sdc.get_stream_state():
+                self.current_page.canvas["stream_state"].config(bg="yellow")
+                self.sdc.ser.write("StreamOnLed\n".encode())
+            else:
+                self.current_page.canvas["stream_state"].config(bg="red")
+                self.sdc.ser.write("StreamOffLed\n".encode())
+            for script, button_script_canvas in script_tuple:
+                if script in mapping:
+                    bg_color = "yellow" if self.sdc.script_executing == script else "grey"
+                else:
+                    bg_color = "red"
+                button_script_canvas.config(bg=bg_color)
+            # update scripts state
+            for scene, button_scene_canvas in scene_tuple:
+                if scene in mapping:
+                    bg_color = "yellow" if self.sdc.get_current_scene() == mapping[scene] else "grey"
+                else:
+                    bg_color = "red"
+                button_scene_canvas.config(bg=bg_color)
+            # update volumes state
+            volume = 0
+            volume_names = self.sdc.get_volumes_names()
+            for volume_name in volume_names:
+                if volume_name in mapping.values():
+                    volume = self.sdc.get_volume(volume_name)
+                    volume *= 1000
+                for key, value in mapping.items():
+                    if value == volume_name:
+                        if key == "P0":
+                            self.current_page.canvas["volume_0"].draw_ray_by_value(volume)
+                        elif key == "P1":
+                            self.current_page.canvas["volume_1"].draw_ray_by_value(volume)
+                        elif key == "P2":
+                            self.current_page.canvas["volume_2"].draw_ray_by_value(volume)
+                        elif key == "P3":
+                            self.current_page.canvas["volume_3"].draw_ray_by_value(volume)
 
     def mapping_page_handler(self):
         pass
@@ -581,7 +661,7 @@ class Application(customtkinter.CTk):
         pass
 
     def task_app_mainloop(self):
-        previous_page = self.current_page
+        previous_page = "no_page"
         time_diff = -1
         while True:
             time_start = time.time()
@@ -591,7 +671,7 @@ class Application(customtkinter.CTk):
                 self.settings.update_settings()
                 self.settings.save_settings()
                 previous_page = self.current_page
-                self.logger.debug(self.settings.settings)
+                self.new_page = True
 
             if self.current_page == self.pages['connection']:
                 self.connection_page_handler()
@@ -602,9 +682,9 @@ class Application(customtkinter.CTk):
             elif self.current_page == self.pages['script']:
                 self.script_page_handler()
 
-            if round(time.time() - time_start, 3) != round(time_diff, 3):
+            if not (round(time_diff, 3) - 0.05 <= round(time.time() - time_start, 3) <= round(time_diff, 3) + 0.1):
                 time_diff = time.time() - time_start
-                self.logger.info(f"thread execution time = {round(time_diff, 3)} seconds")
+                self.logger.debug(f"thread execution time = {round(time_diff, 3)} seconds")
 
             time.sleep(0.01)
 
