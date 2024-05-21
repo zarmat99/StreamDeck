@@ -1,6 +1,7 @@
 # to fix list:
-# acquisire i volumi in maniera diversa e non con wasapi_output_capture
-# modificare come si salva il settings, deve essere inizializzato da gui e salvato dopo ogni cambiamento
+# - acquisire i volumi in maniera diversa e non con wasapi_output_capture
+# - al posto di utilizzare self.run per gestire l'esecuzione dei thread posso uccidere il thread quando non sono nella online page
+#   e ogni volta che ritorno nella online page chiamo la sdc.start()
 import math
 import time
 import threading
@@ -18,39 +19,42 @@ class StreamDeckController:
         self.ser_data = ""
         self.ser = None
         self.ws = None
+        self.run = False
         # logging.basicConfig(level=logging.DEBUG)
 
-    def connect(self):
+    def start(self):
+        if self.ser is not None and self.ws is not None:
+            if not self.run:
+                threading.Thread(target=self.read_ser_task, daemon=True).start()
+                threading.Thread(target=self.main_task, daemon=True).start()
+                self.run = True
+            return True
+        else:
+            return False
+
+    def connect_obs_web_socket(self):
         host = self.app.settings.settings['connection']['obs_data']['host']
         port = self.app.settings.settings['connection']['obs_data']['port']
         password = self.app.settings.settings['connection']['obs_data']['password']
-        com_port = self.app.settings.settings['connection']['serial_data']['com_port']
-        baud_rate = self.app.settings.settings['connection']['serial_data']['baud_rate']
-        # init objects
-        self.connect_obs_web_socket(host, port, password)
-        self.open_serial_communication(com_port, baud_rate)
-        # errors handler
-        if self.ws is None or self.ser is None:
-            return self.ws, self.ser
-        # init thread
-        threading.Thread(target=self.read_ser_task, daemon=True).start()
-        threading.Thread(target=self.main_task, daemon=True).start()
-
-        return self.ws, self.ser
-
-    def connect_obs_web_socket(self, host, port, password):
         self.ws = obsws(host=host, port=port, password=password, timeout=2, legacy=0)
         try:
             self.ws.connect()
             self.ws.call(requests.GetVersion()).getObsVersion()
+            return True
         except BaseException:
             self.ws = None
+            return False
 
-    def open_serial_communication(self, com_port, baud_rate):
+
+    def open_serial_communication(self):
+        com_port = self.app.settings.settings['connection']['serial_data']['com_port']
+        baud_rate = self.app.settings.settings['connection']['serial_data']['baud_rate']
         try:
             self.ser = serial.Serial(com_port, baud_rate, timeout=2)
+            return True
         except Exception:
             self.ser = None
+            return False
 
     def pot_to_fader(self, pot_value):
         min_pot = 94
@@ -64,7 +68,6 @@ class StreamDeckController:
             return max_pot, max_db
         db = ((math.log10(pot_value - min_pot + 1)) / (math.log10(max_pot - min_pot + 1))) * (max_db - min_db) + min_db
         return pot_value, db
-
 
     def get_volumes_names(self):
         inputs = []
@@ -153,11 +156,7 @@ class StreamDeckController:
         self.ser_data = ""
 
     def main_task(self):
-        time.sleep(3)   # wait for serial init
-        self.ser.write("start\n".encode())
-        print("start sent!")
-        while self.ser_data != "start ok":
-            pass
+        time.sleep(3)
         while not self.destroyer:
             self.event_handler()
             time.sleep(0.01)

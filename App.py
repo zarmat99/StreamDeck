@@ -523,6 +523,9 @@ class Application(customtkinter.CTk):
         self.new_page = False
         self.pages = {}
         self.current_page = None
+        self.list = {"scene": [],
+                     "script": [],
+                     "volume": []}
         # class objects
         self.logger = None
         self.settings = None
@@ -534,6 +537,7 @@ class Application(customtkinter.CTk):
         self.init_logger()
         self.init_graphic()
         self.init_data()
+        self.init_sdc()
         self.init_app_mainloop()
 
     def init_graphic(self):
@@ -552,16 +556,12 @@ class Application(customtkinter.CTk):
 
     def init_sdc(self):
         self.sdc = StreamDeckController_New.StreamDeckController(self)
-        ws, ser = self.sdc.connect()
-        if ser is None:
-            self.logger.debug("init_sdc error, serial error")
-            return False
-        if ws is None:
-            self.logger.error("init_sdc error: obsws error")
-            return False
-        if self.sdc is not None:
-            self.logger.debug("init_sdc ok")
-        return True
+        self.sdc.connect_obs_web_socket()
+        self.sdc.open_serial_communication()
+        if self.sdc.start():
+            self.logger.debug("init ok")
+        else:
+            self.logger.debug("init error")
 
     def init_logger(self):
         self.logger = Logger(levels=['debug', 'error'], filename='logs.log', console=True)
@@ -586,6 +586,7 @@ class Application(customtkinter.CTk):
         pass
 
     def online_page_handler(self):
+        # variables definition
         scene_tuple = [
             ("B0", self.current_page.canvas["scene_0"]),
             ("B1", self.current_page.canvas["scene_1"]),
@@ -598,44 +599,74 @@ class Application(customtkinter.CTk):
             ("G2", self.current_page.canvas["script_2"]),
             ("G3", self.current_page.canvas["script_3"])
         ]
+        current_page = self.pages["online"]
         mapping = self.settings.settings['mapping']
+
         # check for new page first iteration
         if self.new_page:
-            self.current_page.entries['sd_state'].configure(text="State: Connecting...")
-            if self.sdc is None and not self.init_sdc():
-                self.sdc = None
-                self.current_page.entries['sd_state'].configure(text="State: Offline")
+            current_page.entries['sd_state'].configure(text="State: Connecting...")
+            if self.sdc.ws is None:
+                if not self.sdc.connect_obs_web_socket():
+                    self.logger.debug("obsws error")
+            if self.sdc.ser is None:
+                if not self.sdc.open_serial_communication():
+                    self.logger.debug("serial error")
+            if self.sdc.start():
+                # init online page with values
+                current_page.entries['sd_state'].configure(text="State: Online")
+                for name_label in current_page.labels.keys():
+                    i = name_label.split("_")[1]
+                    if "scene" in name_label:
+                        key = f"B{i}"
+                    elif "script" in name_label:
+                        key = f"G{i}"
+                    #elif "volume" in name_label:
+                    #    key = f"P{i}"
+                    else:
+                        continue
+                    if self.settings.settings["mapping"][key] is not None:
+                        current_page.labels[name_label].configure(text=self.settings.settings["mapping"][key])
+                        current_page.canvas[name_label].config(bg="grey")
+                    else:
+                        current_page.canvas[name_label].config(bg="red")
             else:
-                self.current_page.entries['sd_state'].configure(text="State: Online")
+                current_page.entries['sd_state'].configure(text="State: Offline")
             self.new_page = False
+
         # online page routine
-        if self.sdc is not None:
+        if self.sdc.ws is not None and self.sdc.ser is not None:
             # update record / streaming state
             if self.sdc.get_record_state():
-                self.current_page.canvas["record_state"].config(bg="yellow")
+                current_page.canvas["record_state"].config(bg="yellow")
                 self.sdc.ser.write("RecordOnLed\n".encode())
             else:
-                self.current_page.canvas["record_state"].config(bg="red")
+                current_page.canvas["record_state"].config(bg="red")
                 self.sdc.ser.write("RecordOffLed\n".encode())
             if self.sdc.get_stream_state():
-                self.current_page.canvas["stream_state"].config(bg="yellow")
+                current_page.canvas["stream_state"].config(bg="yellow")
                 self.sdc.ser.write("StreamOnLed\n".encode())
             else:
-                self.current_page.canvas["stream_state"].config(bg="red")
+                current_page.canvas["stream_state"].config(bg="red")
                 self.sdc.ser.write("StreamOffLed\n".encode())
-            for script, button_script_canvas in script_tuple:
-                if script in mapping:
-                    bg_color = "yellow" if self.sdc.script_executing == script else "grey"
-                else:
-                    bg_color = "red"
-                button_script_canvas.config(bg=bg_color)
+
             # update scripts state
+            for script, button_script_canvas in script_tuple:
+                if script in mapping and button_script_canvas.cget("bg") != "red":
+                    if self.sdc.script_executing == script:
+                        bg_color = "yellow"
+                    else:
+                        bg_color = "gray"
+                    button_script_canvas.config(bg=bg_color)
+
+            # update scenes state
             for scene, button_scene_canvas in scene_tuple:
-                if scene in mapping:
-                    bg_color = "yellow" if self.sdc.get_current_scene() == mapping[scene] else "grey"
-                else:
-                    bg_color = "red"
-                button_scene_canvas.config(bg=bg_color)
+                if scene in mapping and button_scene_canvas.cget("bg") != "red":
+                    if self.sdc.get_current_scene() == mapping[scene]:
+                        bg_color = "yellow"
+                    else:
+                        bg_color = "gray"
+                    button_scene_canvas.config(bg=bg_color)
+
             # update volumes state
             volume = 0
             volume_names = self.sdc.get_volumes_names()
@@ -646,16 +677,74 @@ class Application(customtkinter.CTk):
                 for key, value in mapping.items():
                     if value == volume_name:
                         if key == "P0":
-                            self.current_page.canvas["volume_0"].draw_ray_by_value(volume)
+                            current_page.canvas["volume_0"].draw_ray_by_value(volume)
                         elif key == "P1":
-                            self.current_page.canvas["volume_1"].draw_ray_by_value(volume)
+                            current_page.canvas["volume_1"].draw_ray_by_value(volume)
                         elif key == "P2":
-                            self.current_page.canvas["volume_2"].draw_ray_by_value(volume)
+                            current_page.canvas["volume_2"].draw_ray_by_value(volume)
                         elif key == "P3":
-                            self.current_page.canvas["volume_3"].draw_ray_by_value(volume)
+                            current_page.canvas["volume_3"].draw_ray_by_value(volume)
 
     def mapping_page_handler(self):
-        pass
+        combobox_scenes = [
+            ('B0', self.current_page.comboboxes["scene_0"], self.current_page.canvas["scene_0"]),
+            ('B1', self.current_page.comboboxes["scene_1"], self.current_page.canvas["scene_1"]),
+            ('B2', self.current_page.comboboxes["scene_2"], self.current_page.canvas["scene_2"]),
+            ('B3', self.current_page.comboboxes["scene_3"], self.current_page.canvas["scene_3"])
+        ]
+        combobox_scripts = [
+            ('G0', self.current_page.comboboxes["script_0"], self.current_page.canvas["script_0"]),
+            ('G1', self.current_page.comboboxes["script_1"], self.current_page.canvas["script_1"]),
+            ('G2', self.current_page.comboboxes["script_2"], self.current_page.canvas["script_2"]),
+            ('G3', self.current_page.comboboxes["script_3"], self.current_page.canvas["script_3"])
+        ]
+        combobox_volumes = [
+            ('P0', self.current_page.comboboxes["volume_0"], self.current_page.canvas["volume_0"]),
+            ('P1', self.current_page.comboboxes["volume_1"], self.current_page.canvas["volume_1"]),
+            ('P2', self.current_page.comboboxes["volume_2"], self.current_page.canvas["volume_2"]),
+            ('P3', self.current_page.comboboxes["volume_3"], self.current_page.canvas["volume_3"])
+        ]
+
+        # init mapping page
+        if self.new_page:
+            for i, name_widget in enumerate(self.current_page.comboboxes.keys()):
+                j = i % 4
+                if "scene" in name_widget:
+                    key = f"B{j}"
+                elif "script" in name_widget:
+                    key = f"G{j}"
+                elif "volume" in name_widget:
+                    key = f"P{j}"
+                if self.settings.settings["mapping"][key] is not None:
+                    self.current_page.comboboxes[name_widget].set(value=self.settings.settings["mapping"][key])
+            self.new_page = False
+
+        # update lists if something change in obs
+        if self.list["scene"] != self.sdc.get_scene_names() or self.list["script"] != list(self.settings.settings["script"].keys()) or self.list["volume"] != self.sdc.get_volumes_names():
+            self.list["scene"] = self.sdc.get_scene_names()
+            self.list["script"] = list(self.settings.settings["script"].keys())
+            self.list["volume"] = self.sdc.get_volumes_names()
+            for name_widget in self.current_page.comboboxes.keys():
+                widget_type = name_widget.split("_")[0]
+                self.current_page.comboboxes[name_widget].configure(values=self.list[widget_type])
+
+        for button, combobox, canvas in combobox_scenes:
+            if combobox.get() in self.sdc.get_scene_names():
+                self.settings.settings["mapping"][button] = combobox.get()
+                canvas.config(bg="grey")
+            else:
+                canvas.config(bg="red")
+
+        for button, combobox, canvas in combobox_scripts:
+            if combobox.get() in list(self.settings.settings["script"].keys()):
+                self.settings.settings["mapping"][button] = combobox.get()
+                canvas.config(bg="grey")
+            else:
+                canvas.config(bg="red")
+
+        for pot, combobox, canvas in combobox_volumes:
+            if combobox.get() in self.sdc.get_volumes_names():
+                self.settings.settings["mapping"][pot] = combobox.get()
 
     def script_page_handler(self):
         pass

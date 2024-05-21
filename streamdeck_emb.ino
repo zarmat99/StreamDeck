@@ -45,30 +45,7 @@ void setup() {
 }
 
 void loop() {
-  if (startReceived) {
-    handleControls();
-
-    // Adjust volume if necessary
-    if (time > 200) {
-      for (int i = 0; i < 4; i++) {
-        volume[i] = adjustVolume(volume[i], '0' + i, POT_PINS[i]);
-      }
-      time = 0;
-    }
-
-    delay(DELAY);
-    time += DELAY;
-  } else {
-    // Check if "start" message received
-    if (Serial.available()) {
-      String line = Serial.readStringUntil('\n');
-      if (line == "start") 
-      {
-        startReceived = true;
-        Serial.println("start ok");
-      }
-    }
-  }
+  handleControls();
 }
 
 // Function to adjust volume
@@ -161,5 +138,11 @@ void handleControls() {
       while (digitalRead(GEN_PUR_PINS[i]) == HIGH);
       break;
     }
+  }
+  
+  // Adjust volume if necessary
+  for (int i = 0; i < 4; i++) 
+  {
+    volume[i] = adjustVolume(volume[i], '0' + i, POT_PINS[i]);
   }
 }
