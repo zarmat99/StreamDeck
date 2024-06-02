@@ -45,7 +45,27 @@ void setup() {
 }
 
 void loop() {
-  handleControls();
+  // Check for start/stop commands
+  if (Serial.available()) 
+  {
+    String line = Serial.readStringUntil('\n');
+
+    // Handle start and stop messages
+    if (line == "start") {
+      startReceived = true;
+      Serial.println("start ok");
+    } 
+    else if (line == "stop") 
+    {
+      startReceived = false;
+      Serial.println("stop ok");
+    }
+  }
+
+  // If start received, handle controls
+  if (startReceived) {
+    handleControls();
+  }
 }
 
 // Function to adjust volume
@@ -53,7 +73,8 @@ int adjustVolume(int volume, char identifier, int pin) {
   int newVolume = 1023 - analogRead(pin);
   
   // Send serial data only if the potentiometer value changes significantly
-  if (abs(newVolume - volume) > TOLERANCE) {
+  if (abs(newVolume - volume) > TOLERANCE) 
+  {
     volume = newVolume;
     String message = "SetInputVolume P" + String(identifier) + " " + String(volume);
     Serial.println(message);
@@ -63,11 +84,15 @@ int adjustVolume(int volume, char identifier, int pin) {
 }
 
 // Function to handle dumb mode
-void dumbMode() {
-  while (true) {
-    if (Serial.available()) {
+void dumbMode() 
+{
+  while (true) 
+  {
+    if (Serial.available()) 
+    {
       String line = Serial.readStringUntil('\n');
-      if (line == "NormalOperation") {
+      if (line == "NormalOperation") 
+      {
         break;
       }
     }
@@ -76,16 +101,19 @@ void dumbMode() {
 
 // Function to handle controls
 void handleControls() {
-  if (Serial.available()) {
+  if (Serial.available()) 
+  {
     String line = Serial.readStringUntil('\n');
 
     // DumbMode control
-    if (line == "DumbMode") {
+    if (line == "DumbMode") 
+    {
       dumbMode();
     }
 
     // LED state control
-    if (line == "RecordOnLed") {
+    if (line == "RecordOnLed") 
+    {
       digitalWrite(LED_PINS[1], HIGH);
       Serial.println("Record Led HIGH");
     }

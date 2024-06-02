@@ -8,7 +8,7 @@ StartRecord starts registration on OBS Studio
 - StopRecord - 
 StopRecord stops registration on OBS Studio
 
-- SetMode -
+- SetMode - *not used*
 SetMode is the mode that allows you to assign a particular function to the buttons, currently it is possible to set the name of the scenes to the button that wants to recall them.
 the mode is triggered by pressing the corresponding button for two seconds
 

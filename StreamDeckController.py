@@ -14,7 +14,6 @@ class StreamDeckController:
     def __init__(self, app):
         self.app = app
         self.pot_value = 0
-        self.destroyer = 0
         self.script_executing = ""
         self.ser_data = ""
         self.ser = None
@@ -23,20 +22,36 @@ class StreamDeckController:
         # logging.basicConfig(level=logging.DEBUG)
 
     def start(self):
-        if self.ser is not None and self.ws is not None:
-            if not self.run:
-                threading.Thread(target=self.read_ser_task, daemon=True).start()
-                threading.Thread(target=self.main_task, daemon=True).start()
-                self.run = True
+        if self.run:
             return True
-        else:
+        if self.ser is None:
             return False
+        if self.ws is None:
+            return False
+        if not self.send_ser("start"):
+            return False
+        self.run = True
+        threading.Thread(target=self.read_ser_task, daemon=True).start()
+        threading.Thread(target=self.main_task, daemon=True).start()
+        return True
+
+    def stop(self):
+        if not self.run:
+            return True
+        self.run = False
+        if not self.send_ser("stop"):
+            return False
+        self.ws.close()
+        self.ws = None
+        self.ser.close()
+        self.ser = None
+        return True
 
     def connect_obs_web_socket(self):
         host = self.app.settings.settings['connection']['obs_data']['host']
         port = self.app.settings.settings['connection']['obs_data']['port']
         password = self.app.settings.settings['connection']['obs_data']['password']
-        self.ws = obsws(host=host, port=port, password=password, timeout=2, legacy=0)
+        self.ws = obsws(host=host, port=port, password=password, timeout=2)
         try:
             self.ws.connect()
             self.ws.call(requests.GetVersion()).getObsVersion()
@@ -45,12 +60,12 @@ class StreamDeckController:
             self.ws = None
             return False
 
-
     def open_serial_communication(self):
         com_port = self.app.settings.settings['connection']['serial_data']['com_port']
         baud_rate = self.app.settings.settings['connection']['serial_data']['baud_rate']
         try:
-            self.ser = serial.Serial(com_port, baud_rate, timeout=2)
+            self.ser = serial.Serial(com_port, baud_rate, timeout=1)
+            time.sleep(2)
             return True
         except Exception:
             self.ser = None
@@ -110,18 +125,27 @@ class StreamDeckController:
         res = self.ws.call(req).datain['outputActive']
         return res
 
-    def destroy(self):
-        self.destroyer = 1
+    def send_ser(self, message):
+        if self.ser is not None:
+            res_exp = f"{message} ok"
+            self.ser.write(f"{message}\n".encode())
+            res = self.ser.readline().decode().strip()
+            print(res)
+            if res == res_exp:
+                return True
+            else:
+                return False
 
     def read_ser_task(self):
-        while not self.destroyer:
+        while self.run:
             try:
                 self.ser_data = self.ser.readline().decode().strip()
-                print(f"> {self.ser_data}")
-                time.sleep(0.01)
-            except Exception as e:
-                print(f"Error: {e}")
-                self.destroyer = 1
+                if self.ser_data:
+                    print(f"> {self.ser_data}")
+            except serial.SerialException as e:
+                print(f"read_ser_task error: {e}")
+                self.run = False
+            time.sleep(0.01)
 
     def event_handler(self):
         if self.ser_data == "StartRecord":
@@ -153,10 +177,9 @@ class StreamDeckController:
             scripting.execute_script(self.app.settings.settings['script'][script_name])
             self.script_executing = ""
 
-        self.ser_data = ""
+        self.ser_data = "no data"
 
     def main_task(self):
-        time.sleep(3)
-        while not self.destroyer:
+        while self.run:
             self.event_handler()
             time.sleep(0.01)
