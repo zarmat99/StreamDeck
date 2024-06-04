@@ -1,6 +1,5 @@
-# gestire la disconnessione di seriale e obsws in tutte le pagine (possibilmente con un modo generalizzato per tutte le pagine)
-# bug del led che non si accende
 # discriminare tra streamdeck e qualsiasi USB-SERIAL CH340 (trovare un modo) -> per esempio dopo il segnale di start si può inviare un pacchetto che descrive il device
+# (SOLVED) gestire le perdite improvvise di connessione seriale o obsws
 
 import serial.tools.list_ports
 import threading
@@ -11,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 import tkinter as tk
 import customtkinter
 import json
-import StreamDeckController_New
+import StreamDeckController
 
 
 class Logger:
@@ -262,6 +261,7 @@ class OnlinePage(BasePage):
     def __init__(self, parent):
         super().__init__(parent)
         self.create_page()
+        self.parent = parent
 
     def change_window_name(self):
         self.parent.title("Streamdeck - Online")
@@ -274,7 +274,7 @@ class OnlinePage(BasePage):
         self.canvas["record_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
         self.labels["stream_state"] = customtkinter.CTkLabel(self.frames["body"], text="Stream State", font=customtkinter.CTkFont(size=15))
         self.canvas["stream_state"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="red")
-        self.entries["sd_state"] = customtkinter.CTkLabel(self.frames["body"], text="State: Offline", font=customtkinter.CTkFont(size=15))
+        self.buttons["sd_state"] = customtkinter.CTkButton(self.frames["body"], text="Offline", fg_color="grey", font=customtkinter.CTkFont(size=15), command=self.sd_state_button_callback)
         self.labels["scene_0"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 0", font=customtkinter.CTkFont(size=15))
         self.canvas["scene_0"] = tk.Canvas(self.frames["body"], width=70, height=70, bg="grey")
         self.labels["scene_1"] = customtkinter.CTkLabel(self.frames["body"], text="Scene 1", font=customtkinter.CTkFont(size=15))
@@ -321,7 +321,7 @@ class OnlinePage(BasePage):
         self.labels["stream_state"].grid(row=0, column=4, columnspan=4, sticky="s")
         self.canvas["record_state"].grid(row=1, column=0, columnspan=4)
         self.canvas["stream_state"].grid(row=1, column=4, columnspan=4)
-        self.entries["sd_state"].grid(row=1, column=0, columnspan=8)
+        self.buttons["sd_state"].grid(row=1, column=0, columnspan=8)
         self.labels["scene_0"].grid(row=2, column=0, sticky="s")
         self.labels["scene_1"].grid(row=2, column=1, sticky="s")
         self.labels["scene_2"].grid(row=2, column=2, sticky="s")
@@ -350,6 +350,17 @@ class OnlinePage(BasePage):
         self.buttons["connection_page"].grid(row=0, column=0, sticky="w", padx=(20, 0), pady=(0, 10))
         self.buttons["mapping_page"].grid(row=0, column=0, columnspan=3, sticky="e", padx=(0, 165), pady=(0, 10))
         self.buttons["script_page"].grid(row=0, column=0, columnspan=3, sticky="e", padx=(0, 20), pady=(0, 10))
+
+    def sd_state_button_callback(self):
+        threading.Thread(target=self.sd_state_button_task, daemon=True).start()
+
+    def sd_state_button_task(self):
+        state = self.buttons["sd_state"].cget("text")
+        if state == "Connect":
+            self.parent.sdc_init_routine()
+            self.parent.init_online_page_widgets()
+        elif state == "Disconnect":
+            self.parent.sdc_close_routine()
 
 
 class MappingPage(BasePage):
@@ -528,7 +539,7 @@ class Application(customtkinter.CTk):
         self.show_page(self.pages['online'])
 
     def init_sdc(self):
-        self.sdc = StreamDeckController_New.StreamDeckController(self)
+        self.sdc = StreamDeckController.StreamDeckController(self)
 
     def init_logger(self):
         self.logger = Logger(levels=['debug', 'error'], filename='logs.log', console=True)
@@ -599,7 +610,7 @@ class Application(customtkinter.CTk):
 
     def reset_online_page_widgets(self):
         current_page = self.pages['online']
-        current_page.entries['sd_state'].configure(text="State: Offline")
+        current_page.buttons['sd_state'].configure(text="Connect", state="normal")
         current_page.buttons["mapping_page"].configure(state="disabled")
         current_page.buttons["script_page"].configure(state="disabled")
         for name_label in current_page.labels.keys():
@@ -613,9 +624,9 @@ class Application(customtkinter.CTk):
     def init_online_page_widgets(self):
         current_page = self.pages['online']
         if not self.sdc.run:
-            current_page.entries['sd_state'].configure(text="State: Offline")
+            current_page.buttons['sd_state'].configure(text="Connect", state="normal")
             return
-        current_page.entries['sd_state'].configure(text="State: Online")
+        current_page.buttons['sd_state'].configure(text="Disconnect", state="normal")
         current_page.buttons["mapping_page"].configure(state="normal")
         current_page.buttons["script_page"].configure(state="normal")
         for name_label in current_page.labels.keys():
@@ -638,16 +649,14 @@ class Application(customtkinter.CTk):
 
     def update_online_page_widgets(self):
         current_page = self.pages["online"]
-        # update record / streaming state
-        try:
-            record_state = self.sdc.get_record_state()
-            stream_state = self.sdc.get_stream_state()
-        except Exception:
-            self.logger.debug("ser.write error")
-            if self.sdc.stop():
-                self.logger.debug("sdc stop ok")
-            return
 
+        record_state = self.sdc.get_record_state()
+        stream_state = self.sdc.get_stream_state()
+        current_scene = self.sdc.get_current_scene()
+        current_script = self.sdc.script_executing
+        volume_names = self.sdc.get_volumes_names()
+
+        # update record / streaming state
         if record_state != self.states["record"]:
             self.states["record"] = record_state
             if record_state:
@@ -673,14 +682,14 @@ class Application(customtkinter.CTk):
             if widget.cget("bg") != "gray":
                 if "scene" == widget_type:
                     key = f"B{widget_type_index}"
-                    if self.sdc.get_current_scene() == self.settings.settings["mapping"][key]:
+                    if current_scene == self.settings.settings["mapping"][key]:
                         bg_color = "yellow"
                     else:
                         bg_color = "red"
                     widget.config(bg=bg_color)
                 elif "script" in name_canvas:
                     key = f"G{widget_type_index}"
-                    if self.sdc.script_executing == key:
+                    if current_script == key:
                         bg_color = "yellow"
                     else:
                         bg_color = "red"
@@ -688,7 +697,7 @@ class Application(customtkinter.CTk):
                 elif "volume" in name_canvas:
                     key = f"P{widget_type_index}"
                     volume_name = current_page.labels[name_canvas].cget("text")
-                    if volume_name in self.sdc.get_volumes_names():
+                    if volume_name in volume_names:
                         volume = self.sdc.get_volume(volume_name) * 1000
                         widget.draw_ray_by_value(volume)
                 else:
@@ -697,7 +706,8 @@ class Application(customtkinter.CTk):
     def sdc_init_routine(self):
         current_page = self.pages["online"]
 
-        current_page.entries['sd_state'].configure(text="State: Connecting...")
+        current_page.buttons['sd_state'].configure(text="Connecting...", state="disabled")
+        time.sleep(1)
         if self.sdc.ws is None:
             if not self.sdc.connect_obs_web_socket():
                 self.logger.debug("obsws error")
@@ -707,19 +717,37 @@ class Application(customtkinter.CTk):
 
         if self.sdc.start():
             self.logger.debug("sdc init ok")
+            current_page.buttons['sd_state'].configure(text="Disconnect", state="normal")
         else:
             self.logger.debug("sdc init error")
+            current_page.buttons['sd_state'].configure(text="Connect", state="normal")
+
+    def sdc_close_routine(self):
+        current_page = self.pages["online"]
+        current_page.buttons['sd_state'].configure(text="Disconnecting...", state="disabled")
+        self.sdc.stop()
+        self.logger.debug("sdc close ok")
+        self.reset_online_page_widgets()
 
     def online_page_handler(self):
         if self.new_page:
             # reset page
-            self.reset_online_page_widgets()
-            self.sdc_init_routine()
+            if not self.sdc.run:
+                self.reset_online_page_widgets()
+                self.sdc_init_routine()
             self.init_online_page_widgets()
             self.new_page = False
 
         if self.sdc.run:
-            self.update_online_page_widgets()
+            try:
+                self.update_online_page_widgets()
+            except Exception as e:
+                self.logger.debug(f"sdc error: {e}")
+                self.sdc.stop()
+                self.reset_online_page_widgets()
+        else:
+            if self.current_page.buttons['sd_state'].cget("text") == "Disconnect":
+                self.reset_online_page_widgets()
 
     def reset_mapping_page_widgets(self):
         current_page = self.pages['mapping']
@@ -790,7 +818,12 @@ class Application(customtkinter.CTk):
             self.new_page = False
 
         if self.sdc.run:
-            self.update_mapping_page_widgets()
+            try:
+                self.update_mapping_page_widgets()
+            except Exception as e:
+                self.logger.debug(f"sdc error: {e}")
+                self.sdc.stop()
+                self.show_page(self.pages["online"])
 
     def script_page_handler(self):
         pass

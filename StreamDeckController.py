@@ -35,17 +35,21 @@ class StreamDeckController:
         threading.Thread(target=self.main_task, daemon=True).start()
         return True
 
-    def stop(self):
-        if not self.run:
-            return True
-        self.run = False
-        if not self.send_ser("stop"):
-            return False
-        self.ws.close()
-        self.ws = None
+    def stop_ser(self):
+        self.send_ser_with_readline_task("stop")
         self.ser.close()
         self.ser = None
-        return True
+
+    def stop_obsws(self):
+        self.ws.disconnect()
+        self.ws = None
+
+    def stop(self):
+        if not self.run:
+            return
+        self.run = False
+        self.stop_ser()
+        self.stop_obsws()
 
     def connect_obs_web_socket(self):
         host = self.app.settings.settings['connection']['obs_data']['host']
@@ -56,7 +60,8 @@ class StreamDeckController:
             self.ws.connect()
             self.ws.call(requests.GetVersion()).getObsVersion()
             return True
-        except BaseException:
+        except BaseException as e:
+            print(e)
             self.ws = None
             return False
 
@@ -67,7 +72,8 @@ class StreamDeckController:
             self.ser = serial.Serial(com_port, baud_rate, timeout=1)
             time.sleep(2)
             return True
-        except Exception:
+        except Exception as e:
+            print(e)
             self.ser = None
             return False
 
@@ -76,7 +82,6 @@ class StreamDeckController:
         max_pot = 1022
         min_db = -100
         max_db = 0
-        base_esponential = 10
         if pot_value <= min_pot:
             return min_pot, min_db
         elif pot_value >= max_pot:
@@ -136,14 +141,23 @@ class StreamDeckController:
             else:
                 return False
 
+    def send_ser_with_readline_task(self, message):
+        if self.ser is not None:
+            res_exp = f"{message} ok"
+            self.ser.write(f"{message}\n".encode())
+            while self.ser_data != res_exp:
+                pass
+
     def read_ser_task(self):
         while self.run:
             try:
                 self.ser_data = self.ser.readline().decode().strip()
                 if self.ser_data:
                     print(f"> {self.ser_data}")
-            except serial.SerialException as e:
+            except Exception as e:
                 print(f"read_ser_task error: {e}")
+                self.ser.close()
+                self.ser = None
                 self.run = False
             time.sleep(0.01)
 
@@ -181,5 +195,9 @@ class StreamDeckController:
 
     def main_task(self):
         while self.run:
-            self.event_handler()
+            try:
+                self.event_handler()
+            except Exception as e:
+                print(e)
+                self.stop()
             time.sleep(0.01)
