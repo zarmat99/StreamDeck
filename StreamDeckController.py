@@ -1,11 +1,9 @@
 # to fix list:
-# acquisire i volumi in maniera diversa e non con wasapi_output_capture
-# modificare come si salva il settings, deve essere inizializzato da gui e salvato dopo ogni cambiamento
-import json
+# - acquisire i volumi in maniera diversa e non con wasapi_output_capture
+# - al posto di utilizzare self.run per gestire l'esecuzione dei thread posso uccidere il thread quando non sono nella online page
+#   e ogni volta che ritorno nella online page chiamo la sdc.start()
 import math
-import sys
 import time
-import logging
 import threading
 import serial
 from obswebsocket import obsws, requests
@@ -13,97 +11,83 @@ import scripting
 
 
 class StreamDeckController:
-    def __init__(self, obs_data={}, serial_data={}):
+    def __init__(self, app):
+        self.app = app
         self.pot_value = 0
-        self.destroyer = 0
         self.script_executing = ""
-        self.obs_data = obs_data
-        self.serial_data = serial_data
+        self.ser_data = ""
         self.ser = None
         self.ws = None
-        self.ser_data = ""
-        self.mapping = {}
-        self.script = {}
+        self.run = False
         # logging.basicConfig(level=logging.DEBUG)
 
     def start(self):
-        self.ws = self.connect_obs_web_socket(self.obs_data['host'], self.obs_data['port'], self.obs_data['password'])
-        self.ser = self.open_serial_communication(self.serial_data['com_port'], self.serial_data['baud_rate'])
-        self.mapping = self.load_settings()
-        self.script = scripting.load_scripts()
+        if self.run:
+            return True
+        if self.ser is None:
+            return False
+        if self.ws is None:
+            return False
+        if not self.send_ser("start"):
+            return False
+        self.run = True
+        threading.Thread(target=self.read_ser_task, daemon=True).start()
+        threading.Thread(target=self.main_task, daemon=True).start()
+        return True
 
-        threading.Thread(target=self.read_ser_task).start()
-        threading.Thread(target=self.main_task).start()
+    def stop_ser(self):
+        self.send_ser_with_readline_task("stop")
+        self.ser.close()
+        self.ser = None
 
-    def save_settings(self):
-        with open('mapping.json', 'w') as file:
-            json.dump(self.mapping, file)
+    def stop_obsws(self):
+        self.ws.disconnect()
+        self.ws = None
 
-    def load_settings(self):
-        mapping_dict = {}
+    def stop(self):
+        if not self.run:
+            return
+        self.run = False
+        self.stop_ser()
+        self.stop_obsws()
+
+    def connect_obs_web_socket(self):
+        host = self.app.settings.settings['connection']['obs_data']['host']
+        port = self.app.settings.settings['connection']['obs_data']['port']
+        password = self.app.settings.settings['connection']['obs_data']['password']
+        self.ws = obsws(host=host, port=port, password=password, timeout=2)
         try:
-            with open("mapping.json", 'r') as file:
-                mapping_dict = json.load(file)
-        except FileNotFoundError:
-            print(FileNotFoundError)
+            self.ws.connect()
+            self.ws.call(requests.GetVersion()).getObsVersion()
+            return True
+        except BaseException as e:
+            print(e)
+            self.ws = None
+            return False
 
-        return mapping_dict
+    def open_serial_communication(self):
+        com_port = self.app.settings.settings['connection']['serial_data']['com_port']
+        baud_rate = self.app.settings.settings['connection']['serial_data']['baud_rate']
+        try:
+            self.ser = serial.Serial(com_port, baud_rate, timeout=1)
+            time.sleep(2)
+            return True
+        except Exception as e:
+            print(e)
+            self.ser = None
+            return False
 
     def pot_to_fader(self, pot_value):
         min_pot = 94
         max_pot = 1022
         min_db = -100
         max_db = 0
-        base_esponential = 10
         if pot_value <= min_pot:
             return min_pot, min_db
         elif pot_value >= max_pot:
             return max_pot, max_db
         db = ((math.log10(pot_value - min_pot + 1)) / (math.log10(max_pot - min_pot + 1))) * (max_db - min_db) + min_db
         return pot_value, db
-
-    def connect_obs_web_socket(self, host="192.168.1.27", port=4455, password="ciaociao"):
-        ws = obsws(host=host, port=port, password=password, legacy=0)
-        try:
-            print(host)
-            ws.connect()
-            res = ws.call(requests.GetVersion()).getObsVersion()
-            print(f"OBS Version: {res}")
-        except Exception as error:
-            print(f"Error: {error}")
-            exit(0)
-        return ws
-
-    def open_serial_communication(self, com_port="COM7", baud_rate=9600):
-        try:
-            ser = serial.Serial(com_port, baud_rate)
-            print("serial connection success!")
-        except Exception as error:
-            print(f"Error: {error}")
-            exit(0)
-        return ser
-
-    def data_from_json_response(self, res, obj_string):
-        objs = []
-        for obj in res.datain[obj_string + 's']:
-            objs.append(obj[obj_string + 'Name'])
-        return objs
-
-    def wait_for_data(self):
-        self.ser_data = ""
-        while self.ser_data == "":
-            pass
-
-    def get_volume(self, volume_name):
-        req = requests.GetInputVolume(inputName=volume_name)
-        res = self.ws.call(req).datain['inputVolumeMul']
-        return res
-
-    def get_volume_names(self):
-        req = requests.GetInputList()
-        res = self.ws.call(req)
-        volumes = self.data_from_json_response(res, "input")
-        return volumes
 
     def get_volumes_names(self):
         inputs = []
@@ -117,10 +101,18 @@ class StreamDeckController:
                     inputs.append(input_dict['inputName'])
         return inputs
 
+    def get_volume(self, volume_name):
+        req = requests.GetInputVolume(inputName=volume_name)
+        res = self.ws.call(req).datain['inputVolumeMul']
+        return res
+
     def get_scene_names(self):
+        scenes = []
         req = requests.GetSceneList()
         res = self.ws.call(req)
-        scenes = self.data_from_json_response(res, "scene")
+        scene_list = res.datain['scenes']
+        for scene in scene_list:
+            scenes.append(scene["sceneName"])
         return scenes
 
     def get_current_scene(self):
@@ -138,27 +130,41 @@ class StreamDeckController:
         res = self.ws.call(req).datain['outputActive']
         return res
 
-    def set_mode(self):
-        while "NormalOperation" not in self.ser_data:
-            if self.ser_data in ["B0", "B1", "B2", "B3", "P0", "P1", "P2", "G0", "G1", "G2", "G3"]:
-                print(f"scenes: {self.get_scene_names()}")
-                print(f"volumes: {self.get_volume_names()}")
-                print(f"scripts: {self.script}")
-                self.mapping[self.ser_data] = input()
-                print(f"{self.mapping[self.ser_data]} set in button {self.ser_data}")
-                self.ser_data = ""
-            self.save_settings()
+    def send_ser(self, message):
+        if self.ser is not None:
+            res_exp = f"{message} ok"
+            self.ser.write(f"{message}\n".encode())
+            res = self.ser.readline().decode().strip()
+            print(res)
+            if res == res_exp:
+                return True
+            else:
+                return False
 
-    def destroy(self):
-        self.destroyer = 1
+    def send_ser_with_readline_task(self, message):
+        if self.ser is not None:
+            res_exp = f"{message} ok"
+            self.ser.write(f"{message}\n".encode())
+            while self.ser_data != res_exp:
+                pass
+
+    def read_ser_task(self):
+        while self.run:
+            try:
+                self.ser_data = self.ser.readline().decode().strip()
+                if self.ser_data:
+                    print(f"> {self.ser_data}")
+            except Exception as e:
+                print(f"read_ser_task error: {e}")
+                self.ser.close()
+                self.ser = None
+                self.run = False
+            time.sleep(0.01)
 
     def event_handler(self):
-        res = ""
-        if self.ser_data == "SetMode":
-            self.set_mode()
-        elif self.ser_data == "StartRecord":
+        if self.ser_data == "StartRecord":
             self.ws.call(requests.StartRecord())
-        elif self.ser_data == "StopRecord":
+        elif self.ser_data == "StopRecord" in self.ser_data:
             self.ws.call(requests.StopRecord())
         elif self.ser_data == "GetStreamStatus":
             self.ws.call(requests.GetRecordStatus())
@@ -166,46 +172,32 @@ class StreamDeckController:
             self.ws.call(requests.StartStream())
         elif self.ser_data == "StopStream":
             self.ws.call(requests.StopStream())
-        elif self.ser_data == "ChangeScene":
-            self.wait_for_data()
-            print(f"scene name: {self.mapping[self.ser_data]}")
-            self.ws.call(requests.SetCurrentProgramScene(sceneName=self.mapping[self.ser_data]))
-        elif self.ser_data == "SetInputVolume":
-            self.wait_for_data()
-            volume_name = self.mapping[self.ser_data]
-            print(f"volume input name: {volume_name}")
-            self.wait_for_data()
-            volume_value, self.pot_value = self.pot_to_fader(int(self.ser_data))
-            print(f"volume value: {volume_value}")
-            print(f"pot value: {self.pot_value}")
-            self.ws.call(requests.SetInputVolume(inputName=volume_name, inputVolumeDb=int(volume_value)))
-        elif self.ser_data == "ExecuteScript":
-            self.wait_for_data()
-            script_name = self.mapping[self.ser_data]
-            print(f"executing {script_name} script...")
-            self.script_executing = self.ser_data
-            scripting.execute_script(self.script[self.mapping[self.ser_data]])
+        elif "ChangeScene" in self.ser_data:
+            pin = self.ser_data.split()[1]
+            scene_name = self.app.settings.settings['mapping'][pin]
+            print(self.ser_data)
+            self.ws.call(requests.SetCurrentProgramScene(sceneName=scene_name))
+        elif "SetInputVolume" in self.ser_data:
+            pin = self.ser_data.split()[1]
+            volume_ser = self.ser_data.split()[2]
+            volume_name = self.app.settings.settings['mapping'][pin]
+            volume_value, self.pot_value = self.pot_to_fader(int(volume_ser))
+            print(f"{self.ser_data}:{self.pot_value} dB")
+            self.ws.call(requests.SetInputVolume(inputName=volume_name, inputVolumeDb=int(self.pot_value)))
+        elif "ExecuteScript" in self.ser_data:
+            pin = self.ser_data.split()[1]
+            script_name = self.app.settings.settings['mapping'][pin]
+            self.script_executing = pin
+            scripting.execute_script(self.app.settings.settings['script'][script_name])
             self.script_executing = ""
-            print("executed!")
 
-        self.ser_data = ""
-
-    def read_ser_task(self):
-        while not self.destroyer:
-            try:
-                self.ser_data = self.ser.readline().decode().strip()
-                print(f"> {self.ser_data}")
-                time.sleep(0.01)
-            except Exception as e:
-                print(f"Error: {e}")
-                self.destroyer = 1
+        self.ser_data = "no data"
 
     def main_task(self):
-        time.sleep(2)
-        self.ser.write("start\n".encode())
-        print("start sent!")
-        while self.ser_data != "start ok":
-            pass
-        while not self.destroyer:
-            self.event_handler()
+        while self.run:
+            try:
+                self.event_handler()
+            except Exception as e:
+                print(e)
+                self.stop()
             time.sleep(0.01)
