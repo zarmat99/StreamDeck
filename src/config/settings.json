@@ -1,0 +1,33 @@
+{
+  "connection": {
+    "obs_data": {
+      "host": "localhost",
+      "port": "4455",
+      "password": "encrypted:Z0FBQUFBQm9DV005OHRuc2dEQVlsVjl4VVhvM3hxS1lwODFSRzFSS3hUMmVUbFR3OENWS3FuSUFCNGhjNnFnZFcyUG1qUWFmQUItYlMzaEtySkJmXzhzRERYQk12R1pMOWc9PQ=="
+    },
+    "serial_data": {
+      "com_port": "COM3",
+      "baud_rate": "9600"
+    }
+  },
+  "online": {},
+  "script": {},
+  "mapping": {
+    "B0": "Scena",
+    "B1": "Scena 2",
+    "B2": null,
+    "B3": null,
+    "P0": null,
+    "P1": null,
+    "P2": null,
+    "P3": null,
+    "G0": null,
+    "G1": null,
+    "G2": null,
+    "G3": null
+  },
+  "ui": {
+    "theme": "dark",
+    "font_size": "medium"
+  }
+}

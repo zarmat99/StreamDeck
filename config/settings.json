@@ -1,0 +1,33 @@
+{
+  "connection": {
+    "obs_data": {
+      "host": "localhost",
+      "port": "4455",
+      "password": "encrypted:Z0FBQUFBQm9DV1VVR0R3MkpVdmRsSDktS1NVWnktTHVaRDFLLUN5SlJhdjE5U2NqSGh1OWEwOFFiOEQ3ZkREMTdPc1BQeVVTQzBoaVVydzNWV1pvN1BnMkVrSUMtMkJ1MFE9PQ=="
+    },
+    "serial_data": {
+      "com_port": "COM3",
+      "baud_rate": "9600"
+    }
+  },
+  "online": {},
+  "script": {},
+  "mapping": {
+    "B0": "Scena",
+    "B1": "Scena 2",
+    "B2": "Scena 3",
+    "B3": null,
+    "P0": "Audio del desktop",
+    "P1": "Microfono/disp. ausiliario",
+    "P2": null,
+    "P3": null,
+    "G0": null,
+    "G1": null,
+    "G2": null,
+    "G3": null
+  },
+  "ui": {
+    "theme": "dark",
+    "font_size": "medium"
+  }
+}
