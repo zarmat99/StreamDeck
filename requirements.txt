@@ -1,0 +1,6 @@
+customtkinter==5.2.0
+pyserial==3.5
+obs-websocket-py==1.0.0
+pyautogui==0.9.54
+cryptography==41.0.3
+pytest==7.4.0
