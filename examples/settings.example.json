@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "connection": {
+    "obs_data": {
+      "host": "localhost",
+      "port": 4455,
+      "password_saved": false
+    },
+    "serial_data": {
+      "com_port": null,
+      "baud_rate": 9600
+    },
+    "auto_connect": false
+  },
+  "mapping": {
+    "B0": null,
+    "B1": null,
+    "B2": null,
+    "B3": null,
+    "P0": null,
+    "P1": null,
+    "P2": null,
+    "P3": null,
+    "G0": null,
+    "G1": null,
+    "G2": null,
+    "G3": null
+  },
+  "ui": {
+    "theme": "dark",
+    "font_size": "medium",
+    "language": "en"
+  },
+  "logs": {
+    "level": "info",
+    "file_enabled": true,
+    "console_enabled": false,
+    "max_files": 5
+  }
+}

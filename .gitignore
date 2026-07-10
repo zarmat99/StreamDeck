@@ -1,4 +1,42 @@
-.venv
-__pycache__
-logs
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pio/
+.nox/
+.coverage
+coverage.xml
+htmlcov/
 
+# Virtual environments
+.venv/
+.venv-*/
+venv/
+
+# Builds and releases
+build/
+dist/
+*.spec
+*.msi
+*.exe
+*.zip
+*.hex
+*.bin
+
+# Runtime data and secrets
+config/
+logs/
+*.log
+*.log.*
+*.bak
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

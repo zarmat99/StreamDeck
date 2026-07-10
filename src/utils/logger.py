@@ -1,77 +1,170 @@
-"""
-Logger module for StreamDeck application.
-Provides a centralized logging mechanism with multiple output targets.
-"""
+"""Application logging with bounded files and runtime reconfiguration."""
+
+from __future__ import annotations
+
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+from pathlib import Path
+import re
+import sys
+import threading
+from typing import Iterable, Optional
+
+
+_LEVELS = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL,
+}
+
+
+def _default_log_dir() -> Path:
+    """Return a per-user writable log directory without requiring a dependency."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return base / "StreamDeckControl" / "logs"
+    state_home = os.environ.get("XDG_STATE_HOME")
+    base = Path(state_home) if state_home else Path.home() / ".local" / "state"
+    return base / "streamdeck-control" / "logs"
+
+
+class _RedactingFilter(logging.Filter):
+    """Best-effort redaction for common secret fields in diagnostic logs."""
+
+    _pattern = re.compile(
+        r"(?i)(password|passwd|secret|authorization|token)\s*[:=]\s*([^\s,;]+)"
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = self._pattern.sub(r"\1=<redacted>", record.msg)
+        return True
+
 
 class Logger:
+    """Small compatibility wrapper around a named, non-propagating logger.
+
+    The previous implementation configured the root logger at DEBUG level, which
+    also captured very verbose third-party WebSocket traffic.  This wrapper owns
+    only ``streamdeck_control`` handlers and can be safely reconfigured at runtime.
     """
-    A configurable logger that can output to file and console.
-    
-    Attributes:
-        logger (logging.Logger): The underlying logger instance
-        levels (list): The logging levels that are enabled
-    """
-    def __init__(self, levels, filename=None, console=False):
-        """
-        Initialize the logger with specified configuration.
-        
-        Args:
-            levels (list): List of logging levels to enable (debug, info, warning, error, critical)
-            filename (str, optional): Log file name. If provided, logs will be written to this file
-            console (bool, optional): Whether to output logs to console
-        
-        Raises:
-            ValueError: If an invalid logging level is provided
-        """
-        self.accepted_levels = ['debug', 'info', 'warning', 'error', 'critical']
-        self.levels = levels
-        self.logger = logging.getLogger()
-        self.logger.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('%(asctime)s - [%(levelname)s] > %(message)s')
 
-        for level in self.levels:
-            if level not in self.accepted_levels:
-                raise ValueError(f'logging level {level} not valid. Please, select an accepted logging level: {self.accepted_levels}')
+    def __init__(
+        self,
+        levels: Optional[Iterable[str]] = None,
+        filename: Optional[str] = "streamdeck.log",
+        console: bool = False,
+        *,
+        level: Optional[str] = None,
+        file_enabled: Optional[bool] = None,
+        max_files: int = 5,
+        log_dir: Optional[os.PathLike[str] | str] = None,
+    ) -> None:
+        requested = [item.lower() for item in (levels or ["info"])]
+        invalid = [item for item in requested if item not in _LEVELS]
+        if invalid:
+            raise ValueError(f"Invalid logging levels: {', '.join(invalid)}")
 
-        if filename:
-            # Ensure logs directory exists
-            os.makedirs('logs', exist_ok=True)
-            file_path = 'logs/' + filename
-            file_handler = RotatingFileHandler(file_path, maxBytes=10*1024*1024, backupCount=5)
-            file_handler.setLevel(logging.DEBUG)
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
+        # Preserve the old list-based constructor: its lowest enabled level is
+        # equivalent to the threshold users expected.
+        selected_level = level.lower() if level else min(requested, key=_LEVELS.get)
+        self.accepted_levels = list(_LEVELS)
+        self.levels = requested
+        self.filename = filename or "streamdeck.log"
+        self.log_dir = Path(log_dir) if log_dir else _default_log_dir()
+        self.logger = logging.getLogger("streamdeck_control")
+        self.logger.propagate = False
+        self._lock = threading.RLock()
+        self._filter = _RedactingFilter()
 
-        if console:
-            console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.DEBUG)
-            console_handler.setFormatter(formatter)
-            self.logger.addHandler(console_handler)
+        self.reconfigure(
+            level=selected_level,
+            file_enabled=bool(filename) if file_enabled is None else file_enabled,
+            console_enabled=console,
+            max_files=max_files,
+        )
 
-    def debug(self, message):
-        """Log a debug message if debug level is enabled."""
-        if 'debug' in self.levels:
-            self.logger.debug(message)
+    def reconfigure(
+        self,
+        *,
+        level: str = "info",
+        file_enabled: bool = True,
+        console_enabled: bool = False,
+        max_files: int = 5,
+    ) -> None:
+        """Replace handlers atomically using the supplied user settings."""
+        normalized = level.lower()
+        if normalized not in _LEVELS:
+            raise ValueError(f"Invalid logging level: {level}")
+        if max_files < 1:
+            raise ValueError("max_files must be at least 1")
 
-    def info(self, message):
-        """Log an info message if info level is enabled."""
-        if 'info' in self.levels:
-            self.logger.info(message)
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s %(threadName)s %(name)s - %(message)s"
+        )
+        with self._lock:
+            for handler in list(self.logger.handlers):
+                self.logger.removeHandler(handler)
+                handler.close()
 
-    def warning(self, message):
-        """Log a warning message if warning level is enabled."""
-        if 'warning' in self.levels:
-            self.logger.warning(message)
+            self.logger.setLevel(_LEVELS[normalized])
+            self.levels = [
+                name for name, numeric in _LEVELS.items() if numeric >= _LEVELS[normalized]
+            ]
 
-    def error(self, message):
-        """Log an error message if error level is enabled."""
-        if 'error' in self.levels:
-            self.logger.error(message)
+            if file_enabled:
+                self.log_dir.mkdir(parents=True, exist_ok=True)
+                handler = RotatingFileHandler(
+                    self.log_dir / self.filename,
+                    maxBytes=5 * 1024 * 1024,
+                    backupCount=max_files,
+                    encoding="utf-8",
+                    delay=True,
+                )
+                handler.setFormatter(formatter)
+                handler.addFilter(self._filter)
+                self.logger.addHandler(handler)
 
-    def critical(self, message):
-        """Log a critical message if critical level is enabled."""
-        if 'critical' in self.levels:
-            self.logger.critical(message) 
+            if console_enabled:
+                handler = logging.StreamHandler()
+                handler.setFormatter(formatter)
+                handler.addFilter(self._filter)
+                self.logger.addHandler(handler)
+
+            # A NullHandler keeps library usage quiet when both outputs are off.
+            if not self.logger.handlers:
+                self.logger.addHandler(logging.NullHandler())
+
+            # Keep dependencies from flooding the root logger if the embedding
+            # application configures it independently.
+            logging.getLogger("obswebsocket").setLevel(logging.WARNING)
+            logging.getLogger("websocket").setLevel(logging.WARNING)
+
+    def debug(self, message: str) -> None:
+        self.logger.debug(message)
+
+    def info(self, message: str) -> None:
+        self.logger.info(message)
+
+    def warning(self, message: str) -> None:
+        self.logger.warning(message)
+
+    def error(self, message: str) -> None:
+        self.logger.error(message)
+
+    def critical(self, message: str) -> None:
+        self.logger.critical(message)
+
+    def exception(self, message: str) -> None:
+        self.logger.exception(message)
+
+    def shutdown(self) -> None:
+        """Flush and close owned handlers during application shutdown."""
+        with self._lock:
+            for handler in list(self.logger.handlers):
+                handler.flush()
+                handler.close()
+                self.logger.removeHandler(handler)

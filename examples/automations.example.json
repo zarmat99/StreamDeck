@@ -1,0 +1,7 @@
+{
+  "Example": [
+    "combo ctrl$shift$s",
+    "delay 0.1",
+    "write Hello from the control surface"
+  ]
+}
