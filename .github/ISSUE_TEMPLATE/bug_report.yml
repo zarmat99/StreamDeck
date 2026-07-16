@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible desktop or reference-firmware defect
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report vulnerabilities or include credentials here. Use the private process in SECURITY.md and redact logs/configuration.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched open and closed issues.
+          required: true
+        - label: I removed passwords, tokens, stream keys, and personal data.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Application version or commit
+      placeholder: 0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows and OBS versions
+      placeholder: Windows 11 24H2; OBS x.y.z
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Firmware, board, and wiring profile
+      placeholder: Firmware 3.0.0; Arduino Uno; uno_internal_pullup (or not applicable)
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: Provide the smallest deterministic sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Minimal redacted diagnostics
+      description: Paste only relevant lines after removing host names, paths, OBS object names, credentials, and personal data.
+      render: text

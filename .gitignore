@@ -9,7 +9,7 @@ __pycache__/
 .pio/
 .nox/
 .coverage
-coverage.xml
+coverage*.xml
 htmlcov/
 
 # Virtual environments
@@ -20,7 +20,6 @@ venv/
 # Builds and releases
 build/
 dist/
-*.spec
 *.msi
 *.exe
 *.zip

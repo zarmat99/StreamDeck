@@ -1,6 +1,8 @@
-customtkinter==5.2.0
-pyserial==3.5
-obs-websocket-py==1.0.0
-pyautogui==0.9.54
-cryptography==41.0.3
-pytest==7.4.0
+# Runtime compatibility file for tools that do not consume pyproject.toml.
+# pyproject.toml remains the canonical dependency declaration.
+customtkinter>=5.2,<6
+pyserial>=3.5,<4
+obs-websocket-py>=1.0,<2
+pyautogui>=0.9.54,<1
+keyring>=24,<27
+platformdirs>=4,<5

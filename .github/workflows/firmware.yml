@@ -1,0 +1,57 @@
+name: Firmware CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: PlatformIO ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [uno_active_high, uno_internal_pullup]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: platformio-${{ runner.os }}-
+      - name: Install PlatformIO
+        run: python -m pip install "platformio>=6.1,<7"
+      - name: Compile reference firmware
+        run: pio run -d firmware -e ${{ matrix.environment }}
+      - name: Upload firmware image
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.environment }}
+          path: firmware/.pio/build/${{ matrix.environment }}/firmware.hex
+          if-no-files-found: error
+          retention-days: 14

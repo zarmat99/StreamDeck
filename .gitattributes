@@ -1,0 +1,18 @@
+# Keep source and metadata byte-stable across Windows and Unix CI runners.
+* text=auto eol=lf
+
+# Git must never attempt line-ending conversion on binary release inputs.
+*.bin binary
+*.dll binary
+*.elf binary
+*.exe binary
+*.gif binary
+*.hex binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.png binary
+*.pyd binary
+*.so binary
+*.zip binary
