@@ -71,8 +71,12 @@ try {
     Invoke-Checked "python" @("-m", "mypy")
 
     if (-not $SkipTests) {
+        New-Item -ItemType Directory -Path (Join-Path $root "build") -Force |
+            Out-Null
         Invoke-Checked "python" @(
             "-m", "pytest",
+            "--basetemp=build/pytest-tmp",
+            "-p", "no:cacheprovider",
             "--cov=src",
             "--cov-report=term-missing",
             "--cov-report=xml"
