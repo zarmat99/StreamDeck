@@ -124,7 +124,9 @@ def parse_script(script_code: str) -> List[ScriptCommand]:
             continue
         if len(parsed) >= MAX_COMMANDS:
             raise ScriptValidationError(
-                line_number, f"scripts may contain at most {MAX_COMMANDS} commands", source
+                line_number,
+                f"scripts may contain at most {MAX_COMMANDS} commands",
+                source,
             )
 
         fields = stripped.split(None, 1)
@@ -155,9 +157,7 @@ def parse_script(script_code: str) -> List[ScriptCommand]:
                 raise ScriptValidationError(
                     line_number, "combo contains an empty key", source
                 )
-            keys = tuple(
-                _validate_key(key, line_number, source) for key in raw_keys
-            )
+            keys = tuple(_validate_key(key, line_number, source) for key in raw_keys)
             if len(keys) < 2:
                 raise ScriptValidationError(
                     line_number, "combo requires at least two keys", source
@@ -220,7 +220,9 @@ def parse_script(script_code: str) -> List[ScriptCommand]:
                     ",".join(fields[1:]), 2, line_number, source
                 )
                 parsed.append(
-                    ScriptCommand(operation, (button,) + coordinates, line_number, source)
+                    ScriptCommand(
+                        operation, (button,) + coordinates, line_number, source
+                    )
                 )
 
     return parsed
@@ -287,7 +289,9 @@ class ScriptManager:
         automation_backend: Any = None,
     ) -> None:
         self.scripts_path = str(
-            Path(scripts_path) if scripts_path is not None else Path(default_config_dir()) / "scripts.json"
+            Path(scripts_path)
+            if scripts_path is not None
+            else Path(default_config_dir()) / "scripts.json"
         )
         self.scripts: Dict[str, List[str]] = {}
         self.logger = logger
@@ -296,7 +300,9 @@ class ScriptManager:
         self._threads: Dict[str, threading.Thread] = {}
         self._lock = threading.RLock()
         self._test_ids = itertools.count(1)
-        self._backend = automation_backend if automation_backend is not None else _pyautogui
+        self._backend = (
+            automation_backend if automation_backend is not None else _pyautogui
+        )
         if self._backend is not None and hasattr(self._backend, "PAUSE"):
             self._backend.PAUSE = 0.01
 

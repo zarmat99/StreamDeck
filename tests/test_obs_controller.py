@@ -50,7 +50,9 @@ for _request_name in (
     "GetInputMute",
     "SetInputMute",
 ):
-    setattr(FakeRequests, _request_name, staticmethod(FakeRequests._make(_request_name)))
+    setattr(
+        FakeRequests, _request_name, staticmethod(FakeRequests._make(_request_name))
+    )
 
 
 class FakeEvents:
@@ -213,8 +215,9 @@ class OBSControllerTests(unittest.TestCase):
         self.assertTrue(wait_until(lambda: len(factory.instances) >= 2))
         self.assertTrue(
             wait_until(
-                lambda: controller.is_connected()
-                and controller.ws is factory.instances[1]
+                lambda: (
+                    controller.is_connected() and controller.ws is factory.instances[1]
+                )
             )
         )
         self.assertIs(controller._listener_thread, worker)

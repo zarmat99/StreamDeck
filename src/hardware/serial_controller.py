@@ -45,7 +45,9 @@ class SerialController:
     def __init__(self, port: str = None, baud_rate: int = 9600, logger=None):
         self.port = port
         self.baud_rate = baud_rate
-        self.ser = None
+        # pyserial does not currently expose a complete, stable type surface and
+        # tests also inject a small compatible transport double here.
+        self.ser: Any = None
         self.connected = False
         self.logger = logger
 
@@ -106,7 +108,9 @@ class SerialController:
             # A stale worker from an interrupted lifecycle must be stopped before a
             # fresh explicit connection is established.
             if not self._stop_workers_locked():
-                self.log("error", "Cannot connect while old serial workers are stopping")
+                self.log(
+                    "error", "Cannot connect while old serial workers are stopping"
+                )
                 return False
             self._stop_listener.clear()
             self._stop_command.clear()
@@ -308,6 +312,7 @@ class SerialController:
                     backoff = min(backoff * 2, self.RECONNECT_MAX_DELAY)
                 continue
 
+            data: Optional[str]
             try:
                 try:
                     data = self._deferred_lines.get_nowait()
@@ -558,7 +563,7 @@ class SerialController:
         self._priority_command_queue.put(self._QUEUE_STOP)
 
     @staticmethod
-    def _clear_queue(target: "queue.Queue[object]") -> None:
+    def _clear_queue(target: "queue.Queue[Any]") -> None:
         while True:
             try:
                 target.get_nowait()

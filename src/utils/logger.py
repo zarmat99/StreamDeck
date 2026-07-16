@@ -23,7 +23,10 @@ _LEVELS = {
 
 def _default_log_dir() -> Path:
     """Return a per-user writable log directory without requiring a dependency."""
-    if sys.platform == "win32":
+    # Preserve the runtime platform check without letting static analysis fold
+    # away the cross-platform branch on the machine running mypy.
+    current_platform: str = sys.platform
+    if current_platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
         return base / "StreamDeckControl" / "logs"
     state_home = os.environ.get("XDG_STATE_HOME")
@@ -39,8 +42,9 @@ class _RedactingFilter(logging.Filter):
     )
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.msg, str):
-            record.msg = self._pattern.sub(r"\1=<redacted>", record.msg)
+        message = record.getMessage()
+        record.msg = self._pattern.sub(r"\1=<redacted>", message)
+        record.args = ()
         return True
 
 
@@ -70,7 +74,9 @@ class Logger:
 
         # Preserve the old list-based constructor: its lowest enabled level is
         # equivalent to the threshold users expected.
-        selected_level = level.lower() if level else min(requested, key=_LEVELS.get)
+        selected_level = (
+            level.lower() if level else min(requested, key=lambda name: _LEVELS[name])
+        )
         self.accepted_levels = list(_LEVELS)
         self.levels = requested
         self.filename = filename or "streamdeck.log"
@@ -112,7 +118,9 @@ class Logger:
 
             self.logger.setLevel(_LEVELS[normalized])
             self.levels = [
-                name for name, numeric in _LEVELS.items() if numeric >= _LEVELS[normalized]
+                name
+                for name, numeric in _LEVELS.items()
+                if numeric >= _LEVELS[normalized]
             ]
 
             if file_enabled:

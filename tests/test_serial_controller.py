@@ -142,8 +142,7 @@ class SerialControllerTests(unittest.TestCase):
         device = factory.instances[0]
         self.assertTrue(
             wait_until(
-                lambda: b"normal\n" in device.writes
-                and b"priority\n" in device.writes
+                lambda: b"normal\n" in device.writes and b"priority\n" in device.writes
             )
         )
         self.assertEqual(controller.protocol_version, 0)
@@ -166,7 +165,9 @@ class SerialControllerTests(unittest.TestCase):
         volumes = []
         scenes = []
         raw = []
-        controller.register_callback("volume_change", lambda *args: volumes.append(args))
+        controller.register_callback(
+            "volume_change", lambda *args: volumes.append(args)
+        )
         controller.register_callback("scene_change", scenes.append)
         controller.register_callback("data", raw.append)
 
@@ -194,8 +195,9 @@ class SerialControllerTests(unittest.TestCase):
         self.assertTrue(wait_until(lambda: len(factory.instances) >= 2))
         self.assertTrue(
             wait_until(
-                lambda: controller.is_connected()
-                and controller.ser is factory.instances[1]
+                lambda: (
+                    controller.is_connected() and controller.ser is factory.instances[1]
+                )
             )
         )
 

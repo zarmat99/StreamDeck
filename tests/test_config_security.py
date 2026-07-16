@@ -65,12 +65,15 @@ def test_plain_legacy_password_moves_to_credential_store_and_is_scrubbed(tmp_pat
     for path in (settings_path, tmp_path / "settings.json.bak"):
         text = path.read_text(encoding="utf-8")
         assert "correct horse battery staple" not in text
-        assert read_json(path)["connection"]["obs_data"]["password"] == ""
-        assert read_json(path)["script"] == {}
+        payload = read_json(path)
+        assert payload["connection"]["obs_data"]["password"] == ""
+        assert payload["script"] == {}
+        assert "mapping" not in payload
 
 
 def test_password_is_memory_only_when_no_credential_store_exists(tmp_path):
     manager = ConfigManager(tmp_path, credential_store=None)
+    assert manager.credential_persistence_available is False
     manager.settings["connection"]["obs_data"]["password"] = "ephemeral"
 
     assert manager.save_settings() is True
@@ -86,6 +89,7 @@ def test_keyring_value_is_loaded_and_empty_password_deletes_it(tmp_path):
     store = MemoryCredentialStore()
     store.values[(CREDENTIAL_SERVICE, OBS_CREDENTIAL_ACCOUNT)] = "from-keyring"
     manager = ConfigManager(tmp_path, credential_store=store)
+    assert manager.credential_persistence_available is True
 
     assert manager.settings["connection"]["obs_data"]["password"] == "from-keyring"
 
@@ -160,3 +164,33 @@ def test_config_manager_never_writes_scripts_repository(tmp_path):
 
     assert read_json(scripts_path) == {"owned": ["press enter"]}
     assert read_json(manager.config_path)["script"] == {}
+
+
+def test_invalid_runtime_values_are_normalized_before_startup(tmp_path):
+    (tmp_path / "settings.json").write_text(
+        json.dumps(
+            {
+                "connection": {
+                    "obs_data": {"host": "", "port": "not-a-port"},
+                    "serial_data": {"baud_rate": -1},
+                    "auto_connect": 0,
+                },
+                "ui": {"theme": "neon", "font_size": "giant", "language": ""},
+                "logs": {"level": "trace", "max_files": 999},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = ConfigManager(config_dir=tmp_path, credential_store=None)
+
+    assert manager.settings["connection"]["obs_data"]["host"] == "localhost"
+    assert manager.settings["connection"]["obs_data"]["port"] == "4455"
+    assert manager.settings["connection"]["serial_data"]["baud_rate"] == "9600"
+    assert manager.settings["ui"] == {
+        "theme": "dark",
+        "font_size": "medium",
+        "language": "en",
+    }
+    assert manager.settings["logs"]["level"] == "info"
+    assert manager.settings["logs"]["max_files"] == 20

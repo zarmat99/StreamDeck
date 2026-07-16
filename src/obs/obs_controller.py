@@ -42,7 +42,9 @@ class OBSController:
         self.host = host
         self.port = port
         self.password = password
-        self.ws = None
+        # obs-websocket-py ships without a complete type surface and tests inject
+        # a protocol-compatible client double, so the transport remains dynamic.
+        self.ws: Any = None
         self.connected = False
         self.logger = logger
         self.version: Optional[str] = None
@@ -500,8 +502,7 @@ class OBSController:
         if pot_value >= max_pot:
             return max_pot, max_db
         db = (
-            math.log10(pot_value - min_pot + 1)
-            / math.log10(max_pot - min_pot + 1)
+            math.log10(pot_value - min_pot + 1) / math.log10(max_pot - min_pot + 1)
         ) * (max_db - min_db) + min_db
         return pot_value, db
 

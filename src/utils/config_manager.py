@@ -27,14 +27,11 @@ SCHEMA_VERSION = 1
 class CredentialStore(Protocol):
     """Small subset of the keyring API used by :class:`ConfigManager`."""
 
-    def get_password(self, service: str, account: str) -> Optional[str]:
-        ...
+    def get_password(self, service: str, account: str) -> Optional[str]: ...
 
-    def set_password(self, service: str, account: str, password: str) -> None:
-        ...
+    def set_password(self, service: str, account: str, password: str) -> None: ...
 
-    def delete_password(self, service: str, account: str) -> None:
-        ...
+    def delete_password(self, service: str, account: str) -> None: ...
 
 
 class _KeyringStore:
@@ -91,6 +88,7 @@ def _default_settings() -> Dict[str, Any]:
                 "password": "",
             },
             "serial_data": {"com_port": None, "baud_rate": "9600"},
+            "auto_connect": False,
         },
         "online": {},
         # Retained in memory for compatibility. ScriptManager is the sole
@@ -110,11 +108,19 @@ def _default_settings() -> Dict[str, Any]:
             "G2": None,
             "G3": None,
         },
-        "ui": {"theme": "dark", "font_size": "medium"},
+        "ui": {"theme": "dark", "font_size": "medium", "language": "en"},
+        "logs": {
+            "level": "info",
+            "file_enabled": True,
+            "console_enabled": False,
+            "max_files": 5,
+        },
     }
 
 
-def _deep_merge(defaults: Mapping[str, Any], loaded: Mapping[str, Any]) -> Dict[str, Any]:
+def _deep_merge(
+    defaults: Mapping[str, Any], loaded: Mapping[str, Any]
+) -> Dict[str, Any]:
     """Merge defaults without discarding unknown user configuration keys."""
 
     result: Dict[str, Any] = copy.deepcopy(dict(loaded))
@@ -137,7 +143,9 @@ def _read_json(path: Path) -> Tuple[Optional[Any], bool]:
         return None, False
 
 
-def read_json_with_backup(path: Union[str, os.PathLike[str]]) -> Tuple[Optional[Any], bool]:
+def read_json_with_backup(
+    path: Union[str, os.PathLike[str]],
+) -> Tuple[Optional[Any], bool]:
     """Read JSON, falling back to ``<name>.bak``.
 
     Returns ``(payload, recovered_from_backup)``.  A missing or invalid primary
@@ -225,21 +233,49 @@ def _normalize_settings(value: Any) -> Dict[str, Any]:
     obs_data = settings["connection"]["obs_data"]
     host = obs_data.get("host")
     obs_data["host"] = str(host) if host not in (None, "") else "localhost"
-    port = obs_data.get("port")
-    obs_data["port"] = str(port) if port not in (None, "") else "4455"
+    try:
+        port = int(str(obs_data.get("port", "4455")))
+    except (TypeError, ValueError):
+        port = 4455
+    obs_data["port"] = str(port if 1 <= port <= 65535 else 4455)
     if not isinstance(obs_data.get("password"), str):
         obs_data["password"] = ""
 
     serial_data = settings["connection"]["serial_data"]
     com_port = serial_data.get("com_port")
     serial_data["com_port"] = None if com_port in (None, "") else str(com_port)
-    baud_rate = serial_data.get("baud_rate")
-    serial_data["baud_rate"] = str(baud_rate) if baud_rate not in (None, "") else "9600"
+    try:
+        baud_rate = int(str(serial_data.get("baud_rate", "9600")))
+    except (TypeError, ValueError):
+        baud_rate = 9600
+    serial_data["baud_rate"] = str(baud_rate if 300 <= baud_rate <= 4_000_000 else 9600)
+    settings["connection"]["auto_connect"] = bool(
+        settings["connection"].get("auto_connect", False)
+    )
 
     settings["mapping"] = _normalize_mapping(settings.get("mapping"))
-    for section in ("online", "script", "ui"):
+    for section in ("online", "script", "ui", "logs"):
         if not isinstance(settings.get(section), Mapping):
             settings[section] = copy.deepcopy(_default_settings()[section])
+
+    ui = settings["ui"]
+    if ui.get("theme") not in {"dark", "light", "system"}:
+        ui["theme"] = "dark"
+    if ui.get("font_size") not in {"small", "medium", "large"}:
+        ui["font_size"] = "medium"
+    if not isinstance(ui.get("language"), str) or not ui["language"].strip():
+        ui["language"] = "en"
+
+    logs = settings["logs"]
+    if logs.get("level") not in {"debug", "info", "warning", "error", "critical"}:
+        logs["level"] = "info"
+    logs["file_enabled"] = bool(logs.get("file_enabled", True))
+    logs["console_enabled"] = bool(logs.get("console_enabled", False))
+    try:
+        max_files = int(logs.get("max_files", 5))
+    except (TypeError, ValueError):
+        max_files = 5
+    logs["max_files"] = min(20, max(1, max_files))
     return settings
 
 
@@ -248,6 +284,10 @@ def _settings_for_disk(value: Any) -> Dict[str, Any]:
 
     settings = _normalize_settings(value)
     settings["connection"]["obs_data"]["password"] = ""
+    # Hardware mappings have their own atomically-written repository. Legacy
+    # embedded mappings are migrated by ``load_mapping`` and then omitted here
+    # so there is exactly one persisted source of truth.
+    settings.pop("mapping", None)
     # Historical releases duplicated automations inside settings.json. Keep
     # any loaded value in memory for compatibility, but only ScriptManager may
     # persist automation definitions.
@@ -279,6 +319,16 @@ class ConfigManager:
 
         self.load_settings()
         self.load_mapping()
+
+    @property
+    def credential_persistence_available(self) -> bool:
+        """Whether the current OS credential backend is usable.
+
+        A backend can be importable but unavailable for the current session, so
+        the most recent keyring operation is part of this health signal.
+        """
+
+        return self.credential_store is not None and self.last_credential_error is None
 
     @staticmethod
     def _resolve_store(store: Any) -> Optional[CredentialStore]:
